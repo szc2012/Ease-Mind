@@ -28,7 +28,7 @@
 ### 安装
 
 ```bash
-git clone https://github.com/yourname/ease-mind.git
+git clone https://github.com/szc2012/Ease-Mind.git](https://github.com/szc2012/Ease-Mind.git
 cd ease-mind
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
