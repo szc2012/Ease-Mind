@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>概览 - EaseMind</title>
+  <link rel="stylesheet" href="/assets/css/style.css">
+</head>
+<body>
+  <script src="/assets/js/app.js"></script>
+  <script>
+    if (!App.requireAdmin()) throw new Error("no access");
+
+    App.renderShell("dashboard", "工作台概览", `
+      <div class="grid grid-4 mb-3">
+        <div class="kpi-card">
+          <div class="kpi-label">基础模型</div>
+          <div class="kpi-value" id="kpi-models">-</div>
+          <div class="kpi-foot">已下载可用</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">微调模型</div>
+          <div class="kpi-value" id="kpi-finetuned">-</div>
+          <div class="kpi-foot">训练生成</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">数据集</div>
+          <div class="kpi-value" id="kpi-datasets">-</div>
+          <div class="kpi-foot">已上传</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">训练任务</div>
+          <div class="kpi-value" id="kpi-tasks">-</div>
+          <div class="kpi-foot">累计创建</div>
+        </div>
+      </div>
+
+      <div class="grid grid-2">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">最近训练任务</div>
+              <div class="card-subtitle">最新的模型训练与微调记录</div>
+            </div>
+            <a class="btn btn-secondary btn-sm" href="/pages/training.html">查看全部</a>
+          </div>
+          <div id="recent-tasks"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">可用模型</div>
+              <div class="card-subtitle">基础模型与微调模型</div>
+            </div>
+            <a class="btn btn-secondary btn-sm" href="/pages/models.html">管理模型</a>
+          </div>
+          <div id="recent-models"></div>
+        </div>
+      </div>
+
+      <div class="card mt-3">
+        <div class="card-header">
+          <div>
+            <div class="card-title">快速开始</div>
+            <div class="card-subtitle">从零开始训练你的第一个 AI 模型</div>
+          </div>
+        </div>
+        <div class="grid grid-3">
+          <a class="card" href="/pages/models.html" style="text-decoration:none;color:inherit;transition:all .15s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+            <div style="font-size:24px;margin-bottom:8px">❖</div>
+            <div style="font-weight:600;margin-bottom:4px">1. 下载基础模型</div>
+            <div class="text-sm text-muted">从魔搭社区输入模型名，自动下载</div>
+          </a>
+          <a class="card" href="/pages/datasets.html" style="text-decoration:none;color:inherit;transition:all .15s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+            <div style="font-size:24px;margin-bottom:8px">▤</div>
+            <div style="font-weight:600;margin-bottom:4px">2. 上传训练数据</div>
+            <div class="text-sm text-muted">支持 docx、txt、网页地址</div>
+          </a>
+          <a class="card" href="/pages/finetune.html" style="text-decoration:none;color:inherit;transition:all .15s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+            <div style="font-size:24px;margin-bottom:8px">✿</div>
+            <div style="font-weight:600;margin-bottom:4px">3. 一键微调</div>
+            <div class="text-sm text-muted">傻瓜模式，无需懂参数</div>
+          </a>
+        </div>
+      </div>
+    `);
+
+    async function load() {
+      try {
+        const [models, datasets, tasks] = await Promise.all([
+          App.api.get("/api/models"),
+          App.api.get("/api/datasets"),
+          App.api.get("/api/training"),
+        ]);
+        const readyModels = models.filter(m => m.status === "ready");
+        const finetuned = models.filter(m => m.source === "finetune");
+        document.getElementById("kpi-models").textContent = readyModels.filter(m => m.source === "modelscope").length;
+        document.getElementById("kpi-finetuned").textContent = finetuned.length;
+        document.getElementById("kpi-datasets").textContent = datasets.length;
+        document.getElementById("kpi-tasks").textContent = tasks.length;
+
+        const tasksEl = document.getElementById("recent-tasks");
+        const recent = tasks.slice(0, 5);
+        if (recent.length === 0) {
+          tasksEl.innerHTML = `<div class="empty-state"><div class="empty-icon">✦</div><div class="empty-text">暂无训练任务</div></div>`;
+        } else {
+          tasksEl.innerHTML = recent.map(t => `
+            <div class="list-item">
+              <div class="list-item-main">
+                <div class="list-item-title">${App.escapeHtml(t.name)}</div>
+                <div class="list-item-sub">${t.mode === "simple" ? "傻瓜微调" : "专业训练"} · ${App.formatTime(t.created_at)}</div>
+              </div>
+              ${App.statusBadge(t.status)}
+            </div>
+          `).join("");
+        }
+
+        const modelsEl = document.getElementById("recent-models");
+        const ready = readyModels.slice(0, 5);
+        if (ready.length === 0) {
+          modelsEl.innerHTML = `<div class="empty-state"><div class="empty-icon">❖</div><div class="empty-text">暂无可用模型，请先下载</div></div>`;
+        } else {
+          modelsEl.innerHTML = ready.map(m => `
+            <div class="list-item">
+              <div class="list-item-main">
+                <div class="list-item-title">${App.escapeHtml(m.name)} ${m.is_active ? '<span class="badge badge-accent">默认</span>' : ''}</div>
+                <div class="list-item-sub">${m.source === "finetune" ? "微调模型" : "基础模型"} · ${m.model_id || "-"}</div>
+              </div>
+              ${App.statusBadge(m.status)}
+            </div>
+          `).join("");
+        }
+      } catch (err) {
+        App.toast(err.message, "error");
+      }
+    }
+    load();
+  </script>
+</body>
+</html>

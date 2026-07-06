@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>傻瓜微调 - EaseMind</title>
+  <link rel="stylesheet" href="/assets/css/style.css">
+</head>
+<body>
+  <script src="/assets/js/app.js"></script>
+  <script>
+    if (!App.requireAdmin()) throw new Error("no access");
+
+    App.renderShell("finetune", "傻瓜微调", `
+      <div class="alert alert-info">
+        ✿ <strong>傻瓜微调</strong>：无需了解任何专业参数，只需选择基础模型、训练数据和质量预设，即可一键开始训练。
+      </div>
+
+      <div class="card mb-3">
+        <div class="card-header">
+          <div><div class="card-title">训练配置</div></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">基础模型</label>
+            <select class="form-select" id="f-model"></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">训练数据集</label>
+            <select class="form-select" id="f-dataset"></select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">任务名称</label>
+          <input class="form-input" id="f-name" placeholder="给这次微调起个名字">
+        </div>
+        <div class="form-group">
+          <label class="form-label">训练质量预设</label>
+          <div class="grid grid-3" id="preset-options"></div>
+        </div>
+        <button class="btn btn-primary btn-lg" id="start-btn">✿ 一键开始微调</button>
+        <a class="btn btn-ghost" href="/pages/training.html">需要专业参数？前往专业训练 →</a>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div><div class="card-title">训练进度</div></div>
+        </div>
+        <div id="progress-area">
+          <div class="empty-state"><div class="empty-icon">✦</div><div class="empty-text">尚未开始训练</div></div>
+        </div>
+      </div>
+    `);
+
+    let selectedPreset = "balanced";
+
+    async function loadOptions() {
+      try {
+        const [models, datasets] = await Promise.all([
+          App.api.get("/api/models?source=modelscope"),
+          App.api.get("/api/datasets"),
+        ]);
+        const ready = models.filter(m => m.status === "ready");
+        const ms = document.getElementById("f-model");
+        ms.innerHTML = ready.length ? ready.map(m => `<option value="${m.id}">${App.escapeHtml(m.name)}</option>`).join("")
+          : `<option value="">（请先在模型管理下载模型）</option>`;
+        const ds = document.getElementById("f-dataset");
+        ds.innerHTML = datasets.length ? datasets.map(d => `<option value="${d.id}">${App.escapeHtml(d.name)}（${d.sample_count}样本）</option>`).join("")
+          : `<option value="">（请先上传数据集）</option>`;
+      } catch (err) { App.toast(err.message, "error"); }
+    }
+
+    async function loadPresets() {
+      try {
+        const data = await App.api.get("/api/training/params");
+        const presets = data.data.simple_presets;
+        const el = document.getElementById("preset-options");
+        el.innerHTML = Object.entries(presets).map(([key, p]) => `
+          <div class="card" data-preset="${key}" style="cursor:pointer;transition:all .15s;border:2px solid var(--border)">
+            <div style="font-weight:600;margin-bottom:4px">${p.label}</div>
+            <div class="text-sm text-muted mb-2">${p.desc}</div>
+            <div class="text-xs text-muted">轮数 ${p.epochs} · LoRA秩 ${p.lora_r}</div>
+          </div>
+        `).join("");
+        el.querySelectorAll("[data-preset]").forEach(card => {
+          card.onclick = () => {
+            selectedPreset = card.dataset.preset;
+            el.querySelectorAll("[data-preset]").forEach(c => c.style.borderColor = "var(--border)");
+            card.style.borderColor = "var(--accent)";
+          };
+        });
+        el.querySelector('[data-preset="balanced"]').click();
+      } catch (err) { App.toast(err.message, "error"); }
+    }
+
+    document.getElementById("start-btn").onclick = async () => {
+      const modelId = document.getElementById("f-model").value;
+      const datasetId = document.getElementById("f-dataset").value;
+      const name = document.getElementById("f-name").value.trim() || `微调_${new Date().toLocaleString("zh-CN")}`;
+      if (!modelId) { App.toast("请先选择基础模型", "error"); return; }
+      if (!datasetId) { App.toast("请先选择数据集", "error"); return; }
+      const btn = document.getElementById("start-btn");
+      btn.disabled = true; btn.textContent = "提交中...";
+      try {
+        const task = await App.api.post("/api/training", {
+          name, model_id: modelId, dataset_id: datasetId, mode: "simple",
+          params: { preset: selectedPreset },
+        });
+        App.toast("训练已启动", "success");
+        startStreaming(task.id);
+      } catch (err) { App.toast(err.message, "error"); }
+      finally { btn.disabled = false; btn.textContent = "✿ 一键开始微调"; }
+    };
+
+    function startStreaming(taskId) {
+      const area = document.getElementById("progress-area");
+      area.innerHTML = `
+        <div class="flex items-center justify-between mb-2">
+          <div><strong>训练进度</strong> <span id="pct">0%</span></div>
+          <span id="t-status" class="badge badge-accent">运行中</span>
+        </div>
+        <div class="progress-bar mb-3"><div class="progress-fill" id="p-fill" style="width:0%"></div></div>
+        <div class="log-viewer" id="log-box"></div>
+      `;
+      const logBox = document.getElementById("log-box");
+      const pFill = document.getElementById("p-fill");
+      const pct = document.getElementById("pct");
+      const tStatus = document.getElementById("t-status");
+
+      App.streamSSE(`/api/training/${taskId}/log/stream`, (msg) => {
+        if (msg.type === "log") {
+          const line = document.createElement("div");
+          line.className = "log-line";
+          const txt = msg.content;
+          if (txt.includes("错误") || txt.includes("失败")) line.classList.add("error");
+          else if (txt.includes("完成") || txt.includes("✓")) line.classList.add("success");
+          else if (txt.includes("阶段") || txt.includes("----")) line.classList.add("info");
+          line.textContent = txt;
+          logBox.appendChild(line);
+          logBox.scrollTop = logBox.scrollHeight;
+        } else if (msg.type === "status") {
+          pFill.style.width = msg.progress + "%";
+          pct.textContent = msg.progress.toFixed(1) + "%";
+          if (msg.status === "completed") { tStatus.className = "badge badge-success"; tStatus.textContent = "已完成"; }
+          if (msg.status === "failed") { tStatus.className = "badge badge-danger"; tStatus.textContent = "失败"; }
+        } else if (msg.type === "done") {
+          App.toast("训练完成！", "success");
+        }
+      }).catch(err => App.toast(err.message, "error"));
+    }
+
+    loadOptions();
+    loadPresets();
+  </script>
+</body>
+</html>
