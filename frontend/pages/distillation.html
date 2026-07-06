@@ -147,12 +147,27 @@
           <span id="t-status" class="badge badge-accent">运行中</span>
         </div>
         <div class="progress-bar mb-3"><div class="progress-fill" id="p-fill" style="width:0%"></div></div>
+        <div class="card mb-3" style="padding:12px">
+          <div class="text-sm mb-1"><strong>📉 Loss 曲线</strong>（total / distill / ce）</div>
+          <div id="loss-chart"></div>
+        </div>
         <div class="log-viewer" id="log-box" style="max-height:380px"></div>
       `;
       const logBox = document.getElementById("log-box");
       const pFill = document.getElementById("p-fill");
       const pct = document.getElementById("pct");
       const tStatus = document.getElementById("t-status");
+      const lossChart = document.getElementById("loss-chart");
+      let lossTimer = null;
+
+      async function refreshLoss() {
+        try {
+          const data = await App.api.get(`/api/distillation/${taskId}/loss`);
+          App.drawLossChart(lossChart, data.data.points, { showDistill: true });
+        } catch (e) { /* 忽略 */ }
+      }
+      lossTimer = setInterval(refreshLoss, 3000);
+      refreshLoss();
 
       App.streamSSE(`/api/distillation/${taskId}/log/stream`, (msg) => {
         if (msg.type === "log") {
@@ -172,6 +187,8 @@
           if (msg.status === "failed") { tStatus.className = "badge badge-danger"; tStatus.textContent = "失败"; }
         } else if (msg.type === "done") {
           App.toast("蒸馏完成！", "success");
+          clearInterval(lossTimer);
+          refreshLoss();
           loadHistory();
         }
       }).catch(err => App.toast(err.message, "error"));

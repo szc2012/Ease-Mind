@@ -120,3 +120,18 @@ class ChatMessage(Base):
     role = Column(String(16), nullable=False)  # user / assistant
     content = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ApiKey(Base):
+    """API 密钥：供第三方调用对话接口"""
+    __tablename__ = "api_keys"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    user_id = Column(String(64), index=True, nullable=False)
+    key = Column(String(128), unique=True, index=True, nullable=False)  # em-xxxxxxxxxxxx
+    name = Column(String(128), nullable=False)  # 密钥名称
+    model_id = Column(String(64), nullable=True)  # 绑定的模型（可选）
+    is_active = Column(Boolean, default=True)
+    last_used_at = Column(DateTime, nullable=True)
+    total_requests = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)

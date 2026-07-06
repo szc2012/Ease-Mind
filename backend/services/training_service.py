@@ -20,6 +20,7 @@ from config import settings, LOG_DIR, MODEL_DIR
 from database import SessionLocal
 from models import TrainingTask, AIModel, Dataset
 from services.dataset_service import get_dataset_text
+from services.loss_service import record_loss
 
 
 # 专业模式参数定义
@@ -246,6 +247,12 @@ def _run_real_training(task_id: str) -> None:
                     lr_val = logs.get("learning_rate", "")
                     try:
                         write_log(self.task_id, f"  step {state.global_step}/{state.max_steps} | loss={loss} | lr={lr_val}")
+                        # 记录 loss 数据点供曲线图使用
+                        if isinstance(loss, (int, float)):
+                            epoch = int(state.epoch) if state.epoch else 0
+                            record_loss(self.task_id, state.global_step, loss,
+                                        epoch=epoch, lr=float(lr_val) if lr_val else 0.0,
+                                        task_type="training")
                     except Exception:
                         pass
             def on_step_begin(self, args, state, control, **kw):
@@ -426,11 +433,17 @@ def _run_mock_training(task_id: str) -> None:
                 db.commit()
             if title.endswith("模型训练"):
                 epochs = int(task.params.get("epochs", 2))
+                global_step = 0
                 for ep in range(1, epochs + 1):
                     write_log(task_id, f"  ---- Epoch {ep}/{epochs} ----")
                     for s in range(1, 6):
+                        global_step += 1
                         loss = round(2.8 * (0.5 ** (s / 6)) + random.uniform(-0.05, 0.05), 4)
                         write_log(task_id, f"  step {s}/5 | loss={loss}")
+                        # 记录 loss 数据点供曲线图使用
+                        record_loss(task_id, global_step, loss, epoch=ep,
+                                    lr=float(task.params.get("learning_rate", 0.0002)),
+                                    task_type="training")
                         task.progress = round(44 + (ep - 1) / epochs * 46 + s / 5 * 46 / epochs, 1)
                         db.commit()
                         time.sleep(0.4)

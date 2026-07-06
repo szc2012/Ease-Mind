@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API 密钥 - EaseMind</title>
+  <link rel="stylesheet" href="/assets/css/style.css">
+</head>
+<body>
+  <script src="/assets/js/app.js"></script>
+  <script>
+    if (!App.requireAuth()) throw new Error("no access");
+
+    App.renderShell("apikeys", "API 密钥", `
+      <div class="alert alert-info">
+        🔑 <strong>API 密钥</strong>：生成密钥后，可使用 OpenAI 兼容接口调用平台模型，接入第三方应用（如 ChatBox、OpenWebUI、LangChain 等）。
+      </div>
+
+      <div class="grid" style="grid-template-columns: 1fr 2fr; gap:18px">
+        <div class="card">
+          <div class="card-header">
+            <div><div class="card-title">创建新密钥</div></div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">密钥名称</label>
+            <input class="form-input" id="k-name" placeholder="例如：我的 ChatBox">
+          </div>
+          <div class="form-group">
+            <label class="form-label">绑定模型（可选）</label>
+            <select class="form-select" id="k-model">
+              <option value="">不绑定（使用默认模型）</option>
+            </select>
+            <div class="form-hint">绑定后，此密钥只能调用指定模型</div>
+          </div>
+          <button class="btn btn-primary btn-block" id="create-btn">🔑 生成密钥</button>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">我的密钥</div>
+              <div class="card-subtitle">列表仅显示密钥前缀，完整密钥仅在创建时显示一次</div>
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="loadKeys()">刷新</button>
+          </div>
+          <div id="keys-list"></div>
+        </div>
+      </div>
+
+      <div class="card mt-3">
+        <div class="card-header">
+          <div><div class="card-title">📖 接口使用说明</div></div>
+        </div>
+        <div style="padding:16px">
+          <p class="mb-2"><strong>Base URL</strong>：<code>http://localhost:8080/api/v1</code></p>
+          <p class="mb-2"><strong>认证方式</strong>：在请求头中添加 <code>Authorization: Bearer em-xxxxxxxx</code></p>
+          <p class="mb-2"><strong>兼容接口</strong>：</p>
+          <ul style="margin-left:20px;line-height:1.8">
+            <li><code>POST /chat/completions</code> — 对话补全（支持 stream）</li>
+            <li><code>GET /models</code> — 模型列表</li>
+          </ul>
+          <p class="mb-1"><strong>cURL 示例</strong>：</p>
+          <pre style="background:var(--bg);padding:12px;border-radius:6px;overflow-x:auto;font-size:12px">curl -X POST http://localhost:8080/api/v1/chat/completions \
+  -H "Authorization: Bearer em-xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "default",
+    "messages": [{"role": "user", "content": "你好"}],
+    "stream": false
+  }'</pre>
+          <p class="mt-2 mb-1"><strong>Python 示例（openai 库）</strong>：</p>
+          <pre style="background:var(--bg);padding:12px;border-radius:6px;overflow-x:auto;font-size:12px">from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://localhost:8080/api/v1",
+    api_key="em-xxxxxxxxxxxx"
+)
+
+response = client.chat.completions.create(
+    model="default",
+    messages=[{"role": "user", "content": "你好"}],
+    stream=False
+)
+print(response.choices[0].message.content)</pre>
+        </div>
+      </div>
+    `);
+
+    async function loadModels() {
+      try {
+        const models = await App.api.get("/api/chat/models");
+        const sel = document.getElementById("k-model");
+        const ready = models.filter(m => m.is_active || true);
+        sel.innerHTML = `<option value="">不绑定（使用默认模型）</option>` +
+          ready.map(m => `<option value="${m.id}">${App.escapeHtml(m.name)}${m.source === "finetune" ? "（微调）" : ""}${m.source === "distill" ? "（蒸馏）" : ""}</option>`).join("");
+      } catch (err) { App.toast(err.message, "error"); }
+    }
+
+    document.getElementById("create-btn").onclick = async () => {
+      const name = document.getElementById("k-name").value.trim();
+      const modelId = document.getElementById("k-model").value;
+      if (!name) { App.toast("请输入密钥名称", "error"); return; }
+      const btn = document.getElementById("create-btn");
+      btn.disabled = true; btn.textContent = "生成中...";
+      try {
+        const key = await App.api.post("/api/apikeys", { name, model_id: modelId || null });
+        document.getElementById("k-name").value = "";
+        // 弹窗显示完整密钥（仅一次）
+        const body = document.createElement("div");
+        body.innerHTML = `
+          <div class="alert alert-warning mb-2">⚠️ 请立即复制保存，关闭后将无法再次查看完整密钥。</div>
+          <div style="background:var(--bg);padding:12px;border-radius:6px;font-family:monospace;font-size:13px;word-break:break-all;user-select:all">${App.escapeHtml(key.key)}</div>
+          <div class="mt-2 text-sm text-muted">Base URL: <code>http://localhost:8080/api/v1</code></div>
+        `;
+        const copyBtn = document.createElement("button");
+        copyBtn.className = "btn btn-primary btn-sm mt-2";
+        copyBtn.textContent = "复制密钥";
+        copyBtn.onclick = () => {
+          navigator.clipboard.writeText(key.key).then(() => App.toast("已复制", "success"));
+        };
+        body.appendChild(copyBtn);
+        App.modal({ title: "密钥已生成", body });
+        loadKeys();
+      } catch (err) { App.toast(err.message, "error"); }
+      finally { btn.disabled = false; btn.textContent = "🔑 生成密钥"; }
+    };
+
+    async function loadKeys() {
+      const el = document.getElementById("keys-list");
+      try {
+        const list = await App.api.get("/api/apikeys");
+        if (list.length === 0) {
+          el.innerHTML = `<div class="empty-state" style="padding:40px"><div class="empty-icon">🔑</div><div class="empty-text">暂无密钥</div></div>`;
+          return;
+        }
+        el.innerHTML = list.map(k => `
+          <div class="list-item">
+            <div class="list-item-main">
+              <div class="list-item-title">${App.escapeHtml(k.name)}</div>
+              <div class="list-item-sub">
+                <code>${App.escapeHtml(k.key_prefix)}</code>
+                ${k.model_id ? ' · 已绑定模型' : ''}
+                · 请求 ${k.total_requests} 次
+                ${k.last_used_at ? ' · 最近使用 ' + App.formatTime(k.last_used_at) : ' · 未使用'}
+              </div>
+            </div>
+            <button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="deleteKey('${k.id}','${App.escapeHtml(k.name)}')">删除</button>
+          </div>
+        `).join("");
+      } catch (err) { App.toast(err.message, "error"); }
+    }
+
+    window.deleteKey = async function(id, name) {
+      if (!confirm(`确定删除密钥「${name}」吗？删除后无法恢复。`)) return;
+      try {
+        await App.api.delete(`/api/apikeys/${id}`);
+        App.toast("密钥已删除", "success");
+        loadKeys();
+      } catch (err) { App.toast(err.message, "error"); }
+    };
+
+    loadModels();
+    loadKeys();
+  </script>
+</body>
+</html>

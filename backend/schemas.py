@@ -187,3 +187,38 @@ class ApiResponse(BaseModel):
     success: bool = True
     message: str = ""
     data: Optional[Any] = None
+
+
+# ---- API Key ----
+class ApiKeyCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    model_id: Optional[str] = None  # 绑定模型（可选）
+
+
+class ApiKeyOut(BaseModel):
+    id: str
+    name: str
+    key: str  # 仅创建时返回完整 key，列表只返回前缀
+    key_prefix: str = ""
+    model_id: Optional[str]
+    is_active: bool
+    last_used_at: Optional[datetime]
+    total_requests: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ---- OpenAI 兼容接口 ----
+class OpenAIChatMessage(BaseModel):
+    role: str
+    content: str
+
+
+class OpenAIChatRequest(BaseModel):
+    model: str = "default"
+    messages: list[OpenAIChatMessage]
+    stream: bool = False
+    max_tokens: Optional[int] = 512
+    temperature: Optional[float] = 0.7

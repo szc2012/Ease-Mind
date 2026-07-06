@@ -182,8 +182,10 @@ const App = (() => {
       { key: "finetune", label: "傻瓜微调", icon: "✿", href: "/pages/finetune.html" },
       { key: "distillation", label: "模型蒸馏", icon: "🔬", href: "/pages/distillation.html" },
       { key: "chat", label: "在线对话", icon: "💬", href: "/pages/chat.html" },
+      { key: "apikeys", label: "API 密钥", icon: "🔑", href: "/pages/apikeys.html" },
     ] : [
       { key: "chat", label: "在线对话", icon: "💬", href: "/pages/chat.html" },
+      { key: "apikeys", label: "API 密钥", icon: "🔑", href: "/pages/apikeys.html" },
     ];
 
     const finalItems = simpleItems.map(it => `
@@ -342,11 +344,65 @@ const App = (() => {
     }
   }
 
+  function drawLossChart(container, points, options) {
+    options = options || {};
+    const showDistill = options.showDistill || false;
+    const W = 600, H = 240, PAD = { l: 50, r: 16, t: 20, b: 36 };
+    container.innerHTML = "";
+    if (!points || points.length === 0) {
+      container.innerHTML = '<div class="empty-state" style="padding:40px"><div class="empty-icon">📉</div><div class="empty-text">暂无 loss 数据</div></div>';
+      return;
+    }
+    const xs = points.map(p => p.step);
+    const lossVals = points.map(p => p.loss);
+    const distillVals = showDistill ? points.map(p => p.distill_loss).filter(v => v != null) : [];
+    const ceVals = showDistill ? points.map(p => p.ce_loss).filter(v => v != null) : [];
+    const allVals = [...lossVals, ...distillVals, ...ceVals];
+    const xMin = Math.min(...xs), xMax = Math.max(...xs);
+    let yMin = Math.min(...allVals), yMax = Math.max(...allVals);
+    if (yMin === yMax) { yMin -= 0.1; yMax += 0.1; }
+    const yPad = (yMax - yMin) * 0.1;
+    yMin -= yPad; yMax += yPad;
+    const plotW = W - PAD.l - PAD.r, plotH = H - PAD.t - PAD.b;
+    const sx = x => PAD.l + ((x - xMin) / (xMax - xMin || 1)) * plotW;
+    const sy = y => PAD.t + plotH - ((y - yMin) / (yMax - yMin || 1)) * plotH;
+    const path = (vals, key) => points.filter(p => p[key] != null)
+      .map((p, i) => `${i === 0 ? "M" : "L"}${sx(p.step).toFixed(1)},${sy(p[key]).toFixed(1)}`).join(" ");
+    let gridLines = "";
+    for (let i = 0; i <= 4; i++) {
+      const y = PAD.t + (plotH / 4) * i;
+      const val = (yMax - (yMax - yMin) * (i / 4)).toFixed(3);
+      gridLines += `<line x1="${PAD.l}" y1="${y}" x2="${W - PAD.r}" y2="${y}" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="2,3"/>`;
+      gridLines += `<text x="${PAD.l - 6}" y="${y + 3}" text-anchor="end" font-size="9" fill="var(--text-muted)">${val}</text>`;
+    }
+    let xLabels = "";
+    for (let i = 0; i <= 4; i++) {
+      const x = PAD.l + (plotW / 4) * i;
+      const val = Math.round(xMin + (xMax - xMin) * (i / 4));
+      xLabels += `<text x="${x}" y="${H - PAD.b + 16}" text-anchor="middle" font-size="9" fill="var(--text-muted)">${val}</text>`;
+    }
+    const colors = { loss: "#d97757", distill: "#5b8def", ce: "#22a06b" };
+    let paths = `<path d="${path(lossVals, "loss")}" fill="none" stroke="${colors.loss}" stroke-width="2"/>`;
+    if (showDistill) {
+      paths += `<path d="${path(distillVals, "distill_loss")}" fill="none" stroke="${colors.distill}" stroke-width="1.5" stroke-dasharray="4,2"/>`;
+      paths += `<path d="${path(ceVals, "ce_loss")}" fill="none" stroke="${colors.ce}" stroke-width="1.5" stroke-dasharray="4,2"/>`;
+    }
+    let legend = showDistill
+      ? `<g transform="translate(${PAD.l},4)"><circle cx="0" cy="4" r="3" fill="${colors.loss}"/><text x="8" y="7" font-size="9" fill="var(--text-muted)">total</text><circle cx="50" cy="4" r="3" fill="${colors.distill}"/><text x="58" y="7" font-size="9" fill="var(--text-muted)">distill</text><circle cx="100" cy="4" r="3" fill="${colors.ce}"/><text x="108" y="7" font-size="9" fill="var(--text-muted)">ce</text></g>`
+      : "";
+    const svg = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">
+      ${gridLines}${xLabels}${paths}${legend}
+      <text x="${PAD.l}" y="${H - 4}" font-size="9" fill="var(--text-muted)">step →</text>
+      <text x="10" y="${PAD.t + 4}" font-size="9" fill="var(--text-muted)" transform="rotate(-90 10 ${PAD.t + 4})">loss →</text>
+    </svg>`;
+    container.innerHTML = svg;
+  }
+
   return {
     getToken, getUser, setToken, setUser, clearAuth,
     api, requireAuth, requireAdmin, redirectLogin, redirectHome,
     toast, modal, renderShell, buildSidebar, buildTopbar,
     escapeHtml, formatTime, statusBadge, logout,
-    streamSSE, streamSSEPost,
+    streamSSE, streamSSEPost, drawLossChart,
   };
 })();

@@ -17,6 +17,7 @@ from services.distillation_service import (
     start_distillation, read_log, get_log_path,
     DISTILL_PARAMS_CONFIG, DISTILL_PARAMS_DEFAULTS,
 )
+from services.loss_service import get_loss_points
 
 router = APIRouter(prefix="/api/distillation", tags=["模型蒸馏"])
 
@@ -153,3 +154,16 @@ async def stream_task_log(
             await asyncio.sleep(1.0)
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
+
+
+@router.get("/{task_id}/loss", response_model=ApiResponse)
+def get_task_loss(
+    task_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
+    """获取蒸馏任务的 loss 曲线数据"""
+    task = db.query(DistillationTask).filter(DistillationTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="蒸馏任务不存在")
+    return ApiResponse(data={"points": get_loss_points(task_id, "distillation")})

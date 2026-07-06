@@ -125,12 +125,28 @@
           <span id="t-status" class="badge badge-accent">运行中</span>
         </div>
         <div class="progress-bar mb-3"><div class="progress-fill" id="p-fill" style="width:0%"></div></div>
+        <div class="card mb-3" style="padding:12px">
+          <div class="text-sm mb-1"><strong>📉 Loss 曲线</strong></div>
+          <div id="loss-chart"></div>
+        </div>
         <div class="log-viewer" id="log-box"></div>
       `;
       const logBox = document.getElementById("log-box");
       const pFill = document.getElementById("p-fill");
       const pct = document.getElementById("pct");
       const tStatus = document.getElementById("t-status");
+      const lossChart = document.getElementById("loss-chart");
+      let lossTimer = null;
+
+      // 定时拉取 loss 数据更新曲线
+      async function refreshLoss() {
+        try {
+          const data = await App.api.get(`/api/training/${taskId}/loss`);
+          App.drawLossChart(lossChart, data.data.points);
+        } catch (e) { /* 忽略 */ }
+      }
+      lossTimer = setInterval(refreshLoss, 3000);
+      refreshLoss();
 
       App.streamSSE(`/api/training/${taskId}/log/stream`, (msg) => {
         if (msg.type === "log") {
@@ -150,6 +166,8 @@
           if (msg.status === "failed") { tStatus.className = "badge badge-danger"; tStatus.textContent = "失败"; }
         } else if (msg.type === "done") {
           App.toast("训练完成！", "success");
+          clearInterval(lossTimer);
+          refreshLoss(); // 最终刷新一次
         }
       }).catch(err => App.toast(err.message, "error"));
     }
