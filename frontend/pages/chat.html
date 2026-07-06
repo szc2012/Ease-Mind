@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>在线对话 - EaseMind</title>
+  <link rel="stylesheet" href="/assets/css/style.css">
+  <style>
+    .content { padding: 0; max-width: none; }
+    .chat-session-item {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding-right: 30px;
+    }
+    .chat-session-item .session-title {
+      flex: 1;
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .session-del-btn {
+      position: absolute;
+      right: 6px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 18px;
+      cursor: pointer;
+      width: 22px;
+      height: 22px;
+      line-height: 1;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.2s, background 0.2s, color 0.2s;
+    }
+    .chat-session-item:hover .session-del-btn {
+      opacity: 1;
+    }
+    .session-del-btn:hover {
+      background: var(--danger-light);
+      color: var(--danger);
+    }
+  </style>
+</head>
+<body>
+  <script src="/assets/js/app.js"></script>
+  <script>
+    if (!App.requireAuth()) throw new Error("no access");
+
+    const user = App.getUser();
+    const isAdmin = user && user.role === "admin";
+    const activeKey = "chat";
+
+    document.body.innerHTML = `
+      <div class="app-shell">
+        ${App.buildSidebar(activeKey)}
+        <div class="main-area">
+          ${App.buildTopbar("在线对话")}
+          <div class="chat-layout">
+            <aside class="chat-sidebar">
+              <div class="chat-sidebar-head">
+                <button class="btn btn-primary btn-block btn-sm" id="new-chat">+ 新建对话</button>
+                <div class="form-group mt-2 mb-0">
+                  <select class="form-select form-sm" id="model-select"></select>
+                </div>
+              </div>
+              <div class="chat-session-list" id="session-list"></div>
+            </aside>
+            <div class="chat-main">
+              <div class="chat-messages" id="messages"></div>
+              <div class="chat-input-area">
+                <div class="chat-input-wrap">
+                  <textarea class="chat-input" id="chat-input" placeholder="输入消息，按 Enter 发送，Shift+Enter 换行" rows="1"></textarea>
+                  <button class="btn btn-primary" id="send-btn">发送</button>
+                </div>
+                <div class="text-xs text-muted text-center mt-1">由 EaseMind 平台提供 · 模拟对话模式</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    let currentSessionId = null;
+    let sending = false;
+
+    async function loadModels() {
+      try {
+        const models = await App.api.get("/api/chat/models");
+        const sel = document.getElementById("model-select");
+        if (models.length === 0) {
+          sel.innerHTML = `<option value="">（暂无可用模型）</option>`;
+          return;
+        }
+        const active = models.find(m => m.is_active) || models[0];
+        sel.innerHTML = models.map(m => `<option value="${m.id}" ${m.id === active.id ? "selected" : ""}>${App.escapeHtml(m.name)}${m.source === "finetune" ? "（微调）" : ""}</option>`).join("");
+      } catch (err) { App.toast(err.message, "error"); }
+    }
+
+    async function loadSessions() {
+      try {
+        const list = await App.api.get("/api/chat/sessions");
+        const el = document.getElementById("session-list");
+        if (list.length === 0) {
+          el.innerHTML = `<div class="empty-state" style="padding:24px"><div class="empty-text">暂无对话</div></div>`;
+          return;
+        }
+        el.innerHTML = list.map(s => `
+          <div class="chat-session-item ${s.id === currentSessionId ? "active" : ""}" onclick="selectSession('${s.id}','${App.escapeHtml(s.title)}')">
+            <span class="session-title">${App.escapeHtml(s.title)}</span>
+            <button class="session-del-btn" title="删除对话" onclick="event.stopPropagation(); deleteSession('${s.id}','${App.escapeHtml(s.title)}')">×</button>
+          </div>
+        `).join("");
+      } catch (err) { App.toast(err.message, "error"); }
+    }
+
+    async function deleteSession(id, title) {
+      if (!confirm(`确定删除对话「${title}」吗？`)) return;
+      try {
+        await App.api.delete(`/api/chat/sessions/${id}`);
+        App.toast("对话已删除", "success");
+        if (currentSessionId === id) {
+          currentSessionId = null;
+          document.getElementById("messages").innerHTML = renderWelcome();
+        }
+        loadSessions();
+      } catch (err) { App.toast(err.message, "error"); }
+    }
+
+    async function newChat() {
+      const modelId = document.getElementById("model-select").value;
+      if (!modelId) { App.toast("暂无可用模型，" + (isAdmin ? "请先在模型管理下载" : "请联系管理员"), "error"); return; }
+      try {
+        const session = await App.api.post("/api/chat/sessions", { model_id: modelId });
+        currentSessionId = session.id;
+        document.getElementById("messages").innerHTML = renderWelcome();
+        loadSessions();
+      } catch (err) { App.toast(err.message, "error"); }
+    }
+
+    window.deleteSession = deleteSession;
+    window.selectSession = async function(id, title) {
+      currentSessionId = id;
+      loadSessions();
+      try {
+        const msgs = await App.api.get(`/api/chat/sessions/${id}/messages`);
+        const el = document.getElementById("messages");
+        if (msgs.length === 0) {
+          el.innerHTML = renderWelcome();
+        } else {
+          el.innerHTML = msgs.map(m => renderBubble(m.role, m.content)).join("");
+          el.scrollTop = el.scrollHeight;
+        }
+      } catch (err) { App.toast(err.message, "error"); }
+    };
+
+    function renderWelcome() {
+      return `
+        <div class="chat-welcome">
+          <div class="welcome-icon">E</div>
+          <h2>开始对话</h2>
+          <p>我是 EaseMind 平台训练的 AI 助手，有什么可以帮您？</p>
+        </div>
+      `;
+    }
+
+    function renderBubble(role, content) {
+      const isUser = role === "user";
+      const avatar = isUser ? App.getUser().username.slice(0,1).toUpperCase() : "E";
+      return `
+        <div class="chat-bubble ${role}">
+          <div class="bubble-avatar">${avatar}</div>
+          <div class="bubble-body">
+            <div class="bubble-role">${isUser ? "你" : "EaseMind AI"}</div>
+            <div class="bubble-content">${App.escapeHtml(content)}</div>
+          </div>
+        </div>
+      `;
+    }
+
+    async function sendMessage() {
+      if (sending) return;
+      const input = document.getElementById("chat-input");
+      const content = input.value.trim();
+      if (!content) return;
+      if (!currentSessionId) { await newChat(); if (!currentSessionId) return; }
+
+      sending = true;
+      const sendBtn = document.getElementById("send-btn");
+      sendBtn.disabled = true; sendBtn.textContent = "回复中...";
+
+      const messagesEl = document.getElementById("messages");
+      // 移除欢迎页
+      const welcome = messagesEl.querySelector(".chat-welcome");
+      if (welcome) welcome.remove();
+
+      // 渲染用户消息
+      messagesEl.insertAdjacentHTML("beforeend", renderBubble("user", content));
+      input.value = "";
+      input.style.height = "auto";
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+
+      // 创建助手气泡占位
+      const assistantId = "assistant-" + Date.now();
+      messagesEl.insertAdjacentHTML("beforeend", `
+        <div class="chat-bubble assistant" id="${assistantId}">
+          <div class="bubble-avatar">E</div>
+          <div class="bubble-body">
+            <div class="bubble-role">EaseMind AI</div>
+            <div class="bubble-content"><span class="text-muted">思考中...</span></div>
+          </div>
+        </div>
+      `);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+
+      const bubbleContent = messagesEl.querySelector(`#${assistantId} .bubble-content`);
+      let buffer = "";
+
+      try {
+        await App.streamSSEPost("/api/chat/send", { session_id: currentSessionId, content }, (msg) => {
+          if (msg.type === "token") {
+            if (buffer === "") bubbleContent.textContent = "";
+            buffer += msg.content;
+            bubbleContent.textContent = buffer;
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+          } else if (msg.type === "done") {
+            buffer = msg.content || buffer;
+            bubbleContent.textContent = buffer;
+          }
+        });
+        loadSessions();
+      } catch (err) {
+        bubbleContent.innerHTML = `<span style="color:var(--danger)">回复失败：${App.escapeHtml(err.message)}</span>`;
+      } finally {
+        sending = false;
+        sendBtn.disabled = false; sendBtn.textContent = "发送";
+      }
+    }
+
+    document.getElementById("new-chat").onclick = newChat;
+    document.getElementById("send-btn").onclick = sendMessage;
+    const chatInput = document.getElementById("chat-input");
+    chatInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+    chatInput.addEventListener("input", () => {
+      chatInput.style.height = "auto";
+      chatInput.style.height = Math.min(chatInput.scrollHeight, 140) + "px";
+    });
+
+    loadModels().then(() => {
+      loadSessions();
+      document.getElementById("messages").innerHTML = renderWelcome();
+    });
+  </script>
+</body>
+</html>

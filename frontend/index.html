@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EaseMind - AI 训练平台</title>
+  <link rel="stylesheet" href="/assets/css/style.css">
+</head>
+<body>
+  <script>
+    // 已登录则跳转主页，否则跳转登录页
+    const token = localStorage.getItem("easemind_token");
+    const user = JSON.parse(localStorage.getItem("easemind_user") || "null");
+    if (token && user) {
+      window.location.href = user.role === "admin" ? "/pages/admin-dashboard.html" : "/pages/chat.html";
+    } else {
+      window.location.href = "/pages/auth.html";
+    }
+  </script>
+</body>
+</html>

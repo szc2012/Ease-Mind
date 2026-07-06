@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>模型管理 - EaseMind</title>
+  <link rel="stylesheet" href="/assets/css/style.css">
+</head>
+<body>
+  <script src="/assets/js/app.js"></script>
+  <script>
+    if (!App.requireAdmin()) throw new Error("no access");
+
+    App.renderShell("models", "模型管理", `
+      <div class="card mb-3">
+        <div class="card-header">
+          <div>
+            <div class="card-title">从魔搭社区下载模型</div>
+            <div class="card-subtitle">输入魔搭社区模型 ID（如 ZhipuAI/glm-4-9b-chat），平台将自动下载</div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="flex:2">
+            <label class="form-label">魔搭模型 ID</label>
+            <input class="form-input" id="dl-model-id" placeholder="例如：ZhipuAI/glm-4-9b-chat">
+            <div class="form-hint">可在 <a href="https://modelscope.cn/models" target="_blank">modelscope.cn/models</a> 复制模型名</div>
+          </div>
+          <div class="form-group" style="flex:1">
+            <label class="form-label">显示名称（可选）</label>
+            <input class="form-input" id="dl-name" placeholder="留空则使用模型名">
+          </div>
+        </div>
+        <button class="btn btn-primary" id="dl-btn">开始下载</button>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">模型列表</div>
+            <div class="card-subtitle">所有基础模型与微调模型</div>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="loadModels()">刷新</button>
+        </div>
+        <div id="model-list"></div>
+      </div>
+    `);
+
+    document.getElementById("dl-btn").onclick = async () => {
+      const modelId = document.getElementById("dl-model-id").value.trim();
+      const name = document.getElementById("dl-name").value.trim();
+      if (!modelId) { App.toast("请输入魔搭模型 ID", "error"); return; }
+      const btn = document.getElementById("dl-btn");
+      btn.disabled = true; btn.textContent = "提交中...";
+      try {
+        await App.api.post("/api/models/download", { model_id: modelId, name: name || null });
+        App.toast("已开始下载，可在列表查看进度", "success");
+        document.getElementById("dl-model-id").value = "";
+        document.getElementById("dl-name").value = "";
+        loadModels();
+      } catch (err) {
+        App.toast(err.message, "error");
+      } finally {
+        btn.disabled = false; btn.textContent = "开始下载";
+      }
+    };
+
+    async function loadModels() {
+      const listEl = document.getElementById("model-list");
+      try {
+        const models = await App.api.get("/api/models");
+        if (models.length === 0) {
+          listEl.innerHTML = `<div class="empty-state"><div class="empty-icon">❖</div><div class="empty-text">暂无模型，请先下载</div></div>`;
+          return;
+        }
+        listEl.innerHTML = models.map(m => `
+          <div class="list-item">
+            <div class="list-item-main">
+              <div class="list-item-title">
+                ${App.escapeHtml(m.name)}
+                ${m.source === "finetune" ? '<span class="tag">微调</span>' : '<span class="tag">基础</span>'}
+                ${m.is_active ? '<span class="badge badge-accent">默认对话</span>' : ''}
+              </div>
+              <div class="list-item-sub">
+                ${m.model_id ? `ID: <span class="font-mono">${App.escapeHtml(m.model_id)}</span> · ` : ""}
+                ${App.formatTime(m.created_at)}
+                ${m.description ? ` · ${App.escapeHtml(m.description)}` : ""}
+              </div>
+            </div>
+            <div class="flex items-center gap-1">
+              ${App.statusBadge(m.status)}
+              ${m.status === "downloading" || m.status === "pending" ? `<button class="btn btn-ghost btn-sm" onclick="viewLog('${m.id}')">查看日志</button>` : ""}
+              ${m.status === "ready" && !m.is_active ? `<button class="btn btn-secondary btn-sm" onclick="setActive('${m.id}')">设为默认</button>` : ""}
+              <button class="btn btn-danger btn-sm" onclick="delModel('${m.id}','${App.escapeHtml(m.name)}')">删除</button>
+            </div>
+          </div>
+        `).join("");
+      } catch (err) {
+        App.toast(err.message, "error");
+      }
+    }
+
+    async function viewLog(id) {
+      try {
+        const data = await App.api.get(`/api/models/${id}/log`);
+        const pre = document.createElement("pre");
+        pre.className = "log-viewer";
+        pre.textContent = data.data.log || "（暂无日志）";
+        App.modal({ title: "下载日志", body: pre });
+      } catch (err) { App.toast(err.message, "error"); }
+    }
+
+    async function setActive(id) {
+      try {
+        await App.api.patch(`/api/models/${id}`, { is_active: true });
+        App.toast("已设为默认对话模型", "success");
+        loadModels();
+      } catch (err) { App.toast(err.message, "error"); }
+    }
+
+    async function delModel(id, name) {
+      if (!confirm(`确定删除模型「${name}」吗？`)) return;
+      try {
+        await App.api.delete(`/api/models/${id}`);
+        App.toast("模型已删除", "success");
+        loadModels();
+      } catch (err) { App.toast(err.message, "error"); }
+    }
+
+    loadModels();
+  </script>
+</body>
+</html>

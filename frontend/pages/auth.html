@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>登录 - EaseMind</title>
+  <link rel="stylesheet" href="/assets/css/style.css">
+</head>
+<body>
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <div class="logo">E</div>
+        <h1>EaseMind</h1>
+        <p>零门槛 AI 训练与微调平台</p>
+      </div>
+
+      <div class="auth-tabs">
+        <div class="auth-tab active" id="tab-login">登录</div>
+        <div class="auth-tab" id="tab-register">注册</div>
+      </div>
+
+      <form id="login-form">
+        <div class="form-group">
+          <label class="form-label">用户名</label>
+          <input class="form-input" id="login-username" placeholder="请输入用户名" autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label class="form-label">密码</label>
+          <input class="form-input" id="login-password" type="password" placeholder="请输入密码" autocomplete="current-password">
+        </div>
+        <button class="btn btn-primary btn-block btn-lg" id="login-btn" type="submit">登录</button>
+      </form>
+
+      <form id="register-form" class="hidden">
+        <div class="form-group">
+          <label class="form-label">用户名</label>
+          <input class="form-input" id="reg-username" placeholder="3-32 个字符" autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label class="form-label">密码</label>
+          <input class="form-input" id="reg-password" type="password" placeholder="至少 6 位" autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label class="form-label">确认密码</label>
+          <input class="form-input" id="reg-password2" type="password" placeholder="再次输入密码" autocomplete="new-password">
+        </div>
+        <button class="btn btn-primary btn-block btn-lg" id="register-btn" type="submit">注册并登录</button>
+      </form>
+
+      <div class="text-center text-sm text-muted mt-3">
+        管理员可训练、微调、管理模型并对话；普通用户注册后可在线对话。
+      </div>
+    </div>
+  </div>
+
+  <script src="/assets/js/app.js"></script>
+  <script>
+    const tabLogin = document.getElementById("tab-login");
+    const tabReg = document.getElementById("tab-register");
+    const loginForm = document.getElementById("login-form");
+    const regForm = document.getElementById("register-form");
+
+    function switchTab(which) {
+      if (which === "login") {
+        tabLogin.classList.add("active"); tabReg.classList.remove("active");
+        loginForm.classList.remove("hidden"); regForm.classList.add("hidden");
+      } else {
+        tabReg.classList.add("active"); tabLogin.classList.remove("active");
+        regForm.classList.remove("hidden"); loginForm.classList.add("hidden");
+      }
+    }
+    tabLogin.onclick = () => switchTab("login");
+    tabReg.onclick = () => switchTab("register");
+
+    loginForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById("login-btn");
+      btn.disabled = true; btn.textContent = "登录中...";
+      try {
+        const data = await App.api.post("/api/auth/login", {
+          username: document.getElementById("login-username").value.trim(),
+          password: document.getElementById("login-password").value,
+        });
+        App.setToken(data.access_token);
+        App.setUser(data.user);
+        App.toast("登录成功", "success");
+        setTimeout(() => App.redirectHome(), 400);
+      } catch (err) {
+        App.toast(err.message, "error");
+        btn.disabled = false; btn.textContent = "登录";
+      }
+    };
+
+    regForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const p1 = document.getElementById("reg-password").value;
+      const p2 = document.getElementById("reg-password2").value;
+      if (p1 !== p2) { App.toast("两次输入的密码不一致", "error"); return; }
+      const btn = document.getElementById("register-btn");
+      btn.disabled = true; btn.textContent = "注册中...";
+      try {
+        const data = await App.api.post("/api/auth/register", {
+          username: document.getElementById("reg-username").value.trim(),
+          password: p1,
+        });
+        App.setToken(data.access_token);
+        App.setUser(data.user);
+        App.toast("注册成功，已自动登录", "success");
+        setTimeout(() => App.redirectHome(), 500);
+      } catch (err) {
+        App.toast(err.message, "error");
+        btn.disabled = false; btn.textContent = "注册并登录";
+      }
+    };
+  </script>
+</body>
+</html>
