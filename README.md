@@ -370,12 +370,7 @@ MODEL_DOWNLOAD_MODE = "mock"
 
 MIT License — 详见 [LICENSE](LICENSE) 文件
 
-## 🙏 致谢
 
-- [ModelScope](https://modelscope.cn/) — 魔搭社区开源模型
-- [HuggingFace](https://huggingface.co/) — Transformers / PEFT / Diffusers
-- [FastAPI](https://fastapi.tiangolo.com/) — 优秀的 Python Web 框架
-- [Anthropic](https://www.anthropic.com/) — 设计灵感来源
 
 ---
 
