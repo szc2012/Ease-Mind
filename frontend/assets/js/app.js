@@ -42,7 +42,14 @@ const App = (() => {
     if (contentType.includes("application/json")) {
       const data = await resp.json();
       if (!resp.ok) {
-        throw new Error(data.detail || data.message || `请求失败 (${resp.status})`);
+        // FastAPI 422 验证错误：detail 是数组 [{msg, ...}]，需要展开成可读字符串
+        let msg = data.detail || data.message || `请求失败 (${resp.status})`;
+        if (Array.isArray(msg)) {
+          msg = msg.map(e => e.msg || JSON.stringify(e)).join("; ");
+        } else if (typeof msg === "object") {
+          msg = JSON.stringify(msg);
+        }
+        throw new Error(msg);
       }
       return data;
     }
@@ -173,6 +180,7 @@ const App = (() => {
       { key: "datasets", label: "数据集", icon: "▤", href: "/pages/datasets.html" },
       { key: "training", label: "模型训练", icon: "✦", href: "/pages/training.html" },
       { key: "finetune", label: "傻瓜微调", icon: "✿", href: "/pages/finetune.html" },
+      { key: "distillation", label: "模型蒸馏", icon: "🔬", href: "/pages/distillation.html" },
       { key: "chat", label: "在线对话", icon: "💬", href: "/pages/chat.html" },
     ] : [
       { key: "chat", label: "在线对话", icon: "💬", href: "/pages/chat.html" },

@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>模型蒸馏 - EaseMind</title>
+  <link rel="stylesheet" href="/assets/css/style.css">
+</head>
+<body>
+  <script src="/assets/js/app.js"></script>
+  <script>
+    if (!App.requireAdmin()) throw new Error("no access");
+
+    App.renderShell("distillation", "模型蒸馏", `
+      <div class="alert alert-info">
+        🔬 <strong>模型蒸馏</strong>：用大模型（教师）的知识训练小模型（学生），让小模型获得接近大模型的能力，同时保持推理速度。
+      </div>
+
+      <div class="grid" style="grid-template-columns: 1fr 1fr; gap:18px">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">蒸馏配置</div>
+              <div class="card-subtitle">选择教师/学生模型与数据集</div>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">教师模型（大模型）</label>
+              <select class="form-select" id="d-teacher"></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">学生模型（小模型）</label>
+              <select class="form-select" id="d-student"></select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">训练数据集（可多选）</label>
+            <div id="d-datasets" class="dataset-checklist"></div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">任务名称</label>
+            <input class="form-input" id="d-name" placeholder="例如：Qwen3-0.6B 蒸馏到 0.5B">
+          </div>
+          <div id="param-fields"></div>
+          <button class="btn btn-primary btn-lg btn-block" id="start-btn">🔬 开始蒸馏</button>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">蒸馏日志</div>
+              <div class="card-subtitle">实时输出蒸馏过程详情</div>
+            </div>
+          </div>
+          <div id="progress-area">
+            <div class="empty-state"><div class="empty-icon">🔬</div><div class="empty-text">开始蒸馏后将显示日志</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mt-3">
+        <div class="card-header">
+          <div>
+            <div class="card-title">蒸馏任务历史</div>
+            <div class="card-subtitle">所有蒸馏记录</div>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="loadHistory()">刷新</button>
+        </div>
+        <div id="task-history"></div>
+      </div>
+    `);
+
+    let paramConfig = {};
+
+    async function loadOptions() {
+      try {
+        const [models, datasets] = await Promise.all([
+          App.api.get("/api/models"),
+          App.api.get("/api/datasets"),
+        ]);
+        const ready = models.filter(m => m.status === "ready");
+        const optHtml = ready.length
+          ? ready.map(m => `<option value="${m.id}">${App.escapeHtml(m.name)}${m.source === "finetune" ? "（微调）" : ""}${m.source === "distill" ? "（蒸馏）" : ""}</option>`).join("")
+          : `<option value="">（请先下载模型）</option>`;
+        document.getElementById("d-teacher").innerHTML = optHtml;
+        document.getElementById("d-student").innerHTML = optHtml;
+        const dsEl = document.getElementById("d-datasets");
+        dsEl.innerHTML = datasets.length
+          ? datasets.map(d => `
+            <label class="checklist-item">
+              <input type="checkbox" value="${d.id}">
+              <span>${App.escapeHtml(d.name)} <span class="text-muted text-xs">（${d.sample_count}样本）</span></span>
+            </label>`).join("")
+          : `<div class="text-muted text-sm">（请先上传数据集）</div>`;
+      } catch (err) { App.toast(err.message, "error"); }
+    }
+
+    async function loadParams() {
+      try {
+        const data = await App.api.get("/api/distillation/params");
+        paramConfig = data.data.params_config;
+        const defaults = data.data.defaults;
+        const el = document.getElementById("param-fields");
+        el.innerHTML = Object.entries(paramConfig).map(([key, cfg]) => `
+          <div class="form-group">
+            <label class="form-label">${cfg.label} <span class="text-muted text-xs">(${key})</span></label>
+            <input class="form-input" type="number" id="param-${key}" value="${defaults[key]}" min="${cfg.min}" max="${cfg.max}" step="${key.includes("rate") || key.includes("alpha") || key.includes("temperature") ? "0.1" : "1"}">
+            <div class="form-hint">${cfg.desc || ""} 范围 ${cfg.min} ~ ${cfg.max}</div>
+          </div>
+        `).join("");
+      } catch (err) { App.toast(err.message, "error"); }
+    }
+
+    document.getElementById("start-btn").onclick = async () => {
+      const teacherId = document.getElementById("d-teacher").value;
+      const studentId = document.getElementById("d-student").value;
+      const datasetIds = Array.from(document.querySelectorAll('#d-datasets input[type="checkbox"]:checked')).map(cb => cb.value);
+      const name = document.getElementById("d-name").value.trim() || `蒸馏_${new Date().toLocaleString("zh-CN")}`;
+      if (!teacherId) { App.toast("请选择教师模型", "error"); return; }
+      if (!studentId) { App.toast("请选择学生模型", "error"); return; }
+      if (teacherId === studentId) { App.toast("教师与学生模型不能相同", "error"); return; }
+      if (datasetIds.length === 0) { App.toast("请至少选择一个数据集", "error"); return; }
+      const params = {};
+      Object.keys(paramConfig).forEach(key => {
+        const v = parseFloat(document.getElementById(`param-${key}`).value);
+        params[key] = isNaN(v) ? paramConfig[key].default : v;
+      });
+      const btn = document.getElementById("start-btn");
+      btn.disabled = true; btn.textContent = "提交中...";
+      try {
+        const task = await App.api.post("/api/distillation", {
+          name, teacher_model_id: teacherId, student_model_id: studentId, dataset_ids: datasetIds, params,
+        });
+        App.toast("蒸馏已启动", "success");
+        startStreaming(task.id);
+        loadHistory();
+      } catch (err) { App.toast(err.message, "error"); }
+      finally { btn.disabled = false; btn.textContent = "🔬 开始蒸馏"; }
+    };
+
+    function startStreaming(taskId) {
+      const area = document.getElementById("progress-area");
+      area.innerHTML = `
+        <div class="flex items-center justify-between mb-2">
+          <div><strong>蒸馏进度</strong> <span id="pct">0%</span></div>
+          <span id="t-status" class="badge badge-accent">运行中</span>
+        </div>
+        <div class="progress-bar mb-3"><div class="progress-fill" id="p-fill" style="width:0%"></div></div>
+        <div class="log-viewer" id="log-box" style="max-height:380px"></div>
+      `;
+      const logBox = document.getElementById("log-box");
+      const pFill = document.getElementById("p-fill");
+      const pct = document.getElementById("pct");
+      const tStatus = document.getElementById("t-status");
+
+      App.streamSSE(`/api/distillation/${taskId}/log/stream`, (msg) => {
+        if (msg.type === "log") {
+          const line = document.createElement("div");
+          line.className = "log-line";
+          const txt = msg.content;
+          if (txt.includes("错误") || txt.includes("失败")) line.classList.add("error");
+          else if (txt.includes("完成") || txt.includes("✓") || txt.includes("蒸馏任务完成")) line.classList.add("success");
+          else if (txt.includes("阶段") || txt.includes("----") || txt.includes("Epoch")) line.classList.add("info");
+          line.textContent = txt;
+          logBox.appendChild(line);
+          logBox.scrollTop = logBox.scrollHeight;
+        } else if (msg.type === "status") {
+          pFill.style.width = msg.progress + "%";
+          pct.textContent = msg.progress.toFixed(1) + "%";
+          if (msg.status === "completed") { tStatus.className = "badge badge-success"; tStatus.textContent = "已完成"; }
+          if (msg.status === "failed") { tStatus.className = "badge badge-danger"; tStatus.textContent = "失败"; }
+        } else if (msg.type === "done") {
+          App.toast("蒸馏完成！", "success");
+          loadHistory();
+        }
+      }).catch(err => App.toast(err.message, "error"));
+    }
+
+    async function loadHistory() {
+      const el = document.getElementById("task-history");
+      try {
+        const list = await App.api.get("/api/distillation");
+        if (list.length === 0) {
+          el.innerHTML = `<div class="empty-state"><div class="empty-icon">🔬</div><div class="empty-text">暂无蒸馏任务</div></div>`;
+          return;
+        }
+        el.innerHTML = list.map(t => `
+          <div class="list-item">
+            <div class="list-item-main">
+              <div class="list-item-title">${App.escapeHtml(t.name)} <span class="tag">蒸馏</span></div>
+              <div class="list-item-sub">${App.formatTime(t.created_at)} · 进度 ${t.progress.toFixed(0)}%</div>
+            </div>
+            <div class="flex items-center gap-1">
+              ${App.statusBadge(t.status)}
+              <button class="btn btn-ghost btn-sm" onclick="viewLog('${t.id}')">查看日志</button>
+            </div>
+          </div>
+        `).join("");
+      } catch (err) { App.toast(err.message, "error"); }
+    }
+
+    async function viewLog(id) {
+      try {
+        const data = await App.api.get(`/api/distillation/${id}/log`);
+        const pre = document.createElement("pre");
+        pre.className = "log-viewer";
+        pre.style.maxHeight = "420px";
+        pre.textContent = data.data.log || "（暂无日志）";
+        App.modal({ title: "蒸馏日志", body: pre });
+      } catch (err) { App.toast(err.message, "error"); }
+    }
+
+    loadOptions();
+    loadParams();
+    loadHistory();
+  </script>
+</body>
+</html>

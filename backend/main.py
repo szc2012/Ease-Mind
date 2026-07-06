@@ -19,6 +19,7 @@ from routers import auth as auth_router
 from routers import models as models_router
 from routers import datasets as datasets_router
 from routers import training as training_router
+from routers import distillation as distillation_router
 from routers import chat as chat_router
 
 FRONTEND_DIR = BASE_DIR / "frontend"
@@ -71,6 +72,7 @@ app.include_router(auth_router.router)
 app.include_router(models_router.router)
 app.include_router(datasets_router.router)
 app.include_router(training_router.router)
+app.include_router(distillation_router.router)
 app.include_router(chat_router.router)
 
 

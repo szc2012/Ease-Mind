@@ -77,6 +77,31 @@ class TrainingTask(Base):
         return [s.strip() for s in (self.dataset_id or "").split(",") if s.strip()]
 
 
+class DistillationTask(Base):
+    """模型蒸馏任务：用教师模型蒸馏学生模型"""
+    __tablename__ = "distillation_tasks"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    name = Column(String(128), nullable=False)
+    teacher_model_id = Column(String(64), nullable=False)
+    student_model_id = Column(String(64), nullable=False)
+    # 逗号分隔的多个数据集 ID
+    dataset_id = Column(String(256), nullable=False)
+    status = Column(String(32), default="pending")  # pending/running/completed/failed
+    progress = Column(Float, default=0.0)
+    params = Column(JSON, default=dict)
+    result_model_id = Column(String(64), nullable=True)
+    log_file = Column(String(512), nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+
+    @property
+    def dataset_ids(self) -> list:
+        return [s.strip() for s in (self.dataset_id or "").split(",") if s.strip()]
+
+
 class ChatSession(Base):
     __tablename__ = "chat_sessions"
 

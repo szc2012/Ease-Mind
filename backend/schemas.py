@@ -112,6 +112,45 @@ class TrainingOut(BaseModel):
         from_attributes = True
 
 
+# ---- 模型蒸馏 ----
+DISTILL_PARAMS_DEFAULTS = {
+    "temperature": 2.0,      # 软化 logits 的温度
+    "alpha": 0.5,            # 蒸馏损失权重（0~1）
+    "epochs": 2,
+    "batch_size": 2,
+    "learning_rate": 0.0002,
+    "max_seq_length": 256,
+}
+
+
+class DistillationCreateRequest(BaseModel):
+    name: str
+    teacher_model_id: str
+    student_model_id: str
+    dataset_ids: list[str]
+    params: dict = Field(default_factory=dict)
+
+
+class DistillationOut(BaseModel):
+    id: str
+    name: str
+    teacher_model_id: str
+    student_model_id: str
+    dataset_id: str
+    dataset_ids: list[str] = []
+    status: str
+    progress: float
+    params: dict
+    result_model_id: Optional[str]
+    error_message: Optional[str]
+    created_at: datetime
+    started_at: Optional[datetime]
+    finished_at: Optional[datetime]
+
+    class Config:
+        from_attributes = True
+
+
 # ---- 对话 ----
 class ChatSessionCreate(BaseModel):
     model_id: str
