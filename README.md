@@ -6,6 +6,9 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-green)
 ![License](https://img.shields.io/badge/License-MIT-orange)
 
+# 详细说明书：下载https://songzichen.lanzoue.com/iEf323v6p79c
+<img width="852" height="1210" alt="b8f3d664-9e13-476e-a5d9-db0244896970" src="https://github.com/user-attachments/assets/d2746729-583b-4702-878b-7b57a8dff1b5" />
+
 ## ✨ 特性
 
 - 🎯 **零门槛体验**：傻瓜微调一键启动，无需懂任何参数
