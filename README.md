@@ -14,6 +14,9 @@
 - 🎯 **零门槛体验**：傻瓜微调一键启动，无需懂任何参数
 - 🔧 **专业可调**：开放 LoRA 秩、学习率、批大小等 9 项专业参数
 - 🔬 **模型蒸馏**：用大模型（教师）蒸馏小模型（学生），仅管理员可用
+- 📉 **Loss 曲线可视化**：训练/蒸馏过程中实时绘制 loss 下降曲线
+- ✏️ **模型重命名**：支持修改本地模型显示名称，便于管理
+- 🔑 **API Key 管理**：生成 OpenAI 兼容密钥，供第三方客户端调用
 - 📥 **模型自动下载**：输入魔搭社区模型名，自动下载到本地
 - 📄 **多格式数据集**：支持 `docx` / `txt` / `md` / `csv` 文件，以及网页 URL 抓取
 - 📚 **多数据集训练**：单次训练可勾选多个数据集，文本自动拼接
@@ -64,8 +67,9 @@ python main.py
    - 🌱 **傻瓜微调**：选择预设（快速/均衡/高质量），一键启动
    - ⚙️ **专业训练**：自定义全部参数
    - 🔬 **模型蒸馏**：选教师/学生模型，用大模型知识训练小模型
-5. **观察训练** → 实时查看进度条、loss、详细日志
+5. **观察训练** → 实时查看进度条、loss 曲线、详细日志
 6. **对话体验** → 进入「在线对话」，选择微调/蒸馏后的模型开始对话
+7. **获取 API Key**（可选）→ 进入「API 密钥」，生成密钥后接入第三方客户端
 
 ### 模型蒸馏流程（管理员）
 
@@ -98,6 +102,7 @@ Ease-Mind/
 │   │   ├── datasets.py        # 数据集
 │   │   ├── training.py        # 训练任务
 │   │   ├── distillation.py    # 模型蒸馏
+│   │   ├── apikeys.py         # API Key 管理
 │   │   └── chat.py            # 对话
 │   ├── services/              # 业务服务
 │   │   ├── modelscope_service.py  # 魔搭下载
@@ -110,7 +115,7 @@ Ease-Mind/
 │   ├── index.html             # 入口跳转
 │   ├── assets/
 │   │   ├── css/style.css      # Anthropic 风格主题
-│   │   └── js/app.js          # 共享工具（请求/Toast/侧边栏）
+│   │   └── js/app.js          # 共享工具（请求/Toast/侧边栏/loss 曲线）
 │   └── pages/
 │       ├── auth.html                  # 登录/注册
 │       ├── admin-dashboard.html       # 管理概览
@@ -119,6 +124,7 @@ Ease-Mind/
 │       ├── training.html              # 专业训练
 │       ├── finetune.html              # 傻瓜微调
 │       ├── distillation.html          # 模型蒸馏
+│       ├── apikeys.html               # API 密钥
 │       └── chat.html                  # 在线对话
 ├── img/                        # 项目截图
 └── data/                       # 运行时数据（自动创建，不上传）
@@ -154,26 +160,64 @@ Ease-Mind/
 **前端**
 - 原生 HTML/CSS/JS（无框架，零依赖）
 - Anthropic 风格设计语言
+- SVG 绘制实时 loss 曲线
 
 ## 📊 功能截图
 
+### 登录界面
+简洁的白色主题登录页。
+
+![登录界面](img/登录界面.jpeg)
+
+### 管理概览
+管理员工作台首页，展示平台运行状态与快捷入口。
+
+![管理概览界面](img/管理概览界面.jpeg)
+
 ### 模型管理
-输入魔搭模型 ID，一键下载基础模型到本地。
+输入魔搭模型 ID，一键下载基础模型到本地；支持设为默认、重命名、删除。
 
 ![模型管理界面](img/模型管理界面.jpeg)
+
+### 模型重命名
+点击「重命名」即可修改模型显示名称，便于管理多个模型。
+
+![模型重命名弹窗](img/模型重命名弹窗.jpeg)
 
 ### 数据集上传
 支持 docx / txt / md / csv 文件上传，也可直接粘贴网页 URL 自动抓取正文。
 
 ![数据集上传界面](img/数据集上传界面.jpeg)
 
-### 训练日志
-实时 SSE 流式推送训练进度、loss、epoch、step 等详细信息。
+### 傻瓜微调
+选择基础模型、勾选多个数据集、选择质量预设，一键开始微调。
+
+![傻瓜微调界面](img/傻瓜微调界面.jpeg)
+
+### 专业训练
+自定义 LoRA 秩、学习率、批大小等全部参数，满足专业调参需求。
+
+![专业训练界面](img/专业训练界面.jpeg)
+
+### 模型蒸馏
+选择教师模型与学生模型，用大模型知识蒸馏小模型，并实时观察 loss 曲线。
+
+![模型蒸馏界面](img/模型蒸馏界面.jpeg)
+
+### 训练日志与 Loss 曲线
+实时 SSE 流式推送训练进度、loss、epoch、step 等详细信息，并以 SVG 绘制 loss 曲线。
 
 ![模型训练日志截图](img/模型训练日志截图.jpeg)
 
+### API 密钥管理
+生成 OpenAI 兼容的 API Key，绑定模型（可选），接入 ChatBox、OpenWebUI、LangChain 等第三方应用。
+
+![API 密钥管理界面](img/API密钥管理界面.jpeg)
+
 ### 在线对话
 基于本地模型真实推理，支持多轮上下文、多会话管理与删除。
+
+![在线对话界面](img/在线对话界面.jpeg)
 
 ![训练后的AI聊天](img/训练后的AI聊天.jpeg)
 
@@ -247,7 +291,7 @@ python main.py
    - **快速体验**：1 轮，适合验证流程
    - **均衡推荐**：2 轮，效果与速度兼顾
    - **高质量**：3 轮，追求更好效果
-6. 点击「一键开始微调」，实时查看进度和日志。
+6. 点击「一键开始微调」，实时查看进度、loss 曲线和日志。
 
 #### 模式 B：专业训练
 
@@ -272,6 +316,7 @@ python main.py
 训练开始后，页面会实时显示：
 
 - **进度条**：当前训练整体进度
+- **Loss 曲线**：基于 SVG 实时绘制的 loss 下降趋势
 - **状态标签**：运行中 / 已完成 / 失败
 - **日志区**：每一行的 loss、epoch、step、学习率等信息
 
@@ -322,6 +367,13 @@ Loss 持续下降通常说明训练正常。如果 Loss 不下降或变成 `nan`
 3. 输入与训练数据相关的问题，验证回答是否符合预期。
 4. 如果不满意，可回到训练流程调整数据或参数重新训练。
 5. 训练好的模型还可作为基础模型再次微调或蒸馏，逐步迭代提升。
+
+### 第七步：获取 API Key（可选）
+
+1. 进入「API 密钥」页面。
+2. 填写密钥名称，选择要绑定的模型（可选）。
+3. 点击「生成密钥」，复制完整密钥（仅显示一次）。
+4. 在第三方客户端中配置 Base URL `http://localhost:8080/api/v1` 与密钥即可调用。
 
 ### 调参建议
 
@@ -396,6 +448,7 @@ POST   /api/auth/register           # 注册
 # 模型管理
 GET    /api/models                  # 模型列表
 POST   /api/models/download         # 下载魔搭模型
+PATCH  /api/models/{id}             # 重命名模型
 DELETE /api/models/{id}             # 删除模型（同时清理本地文件）
 
 # 数据集
@@ -407,13 +460,24 @@ POST   /api/datasets/url            # 抓取网页数据集
 GET    /api/training/params         # 获取训练参数配置
 POST   /api/training                # 创建训练任务（支持多数据集）
 GET    /api/training                # 训练任务列表
+GET    /api/training/{id}/loss      # 获取训练 loss 数据
 GET    /api/training/{id}/log/stream # SSE 训练日志流
 
 # 模型蒸馏（管理员）
 GET    /api/distillation/params     # 获取蒸馏参数配置
 POST   /api/distillation            # 创建蒸馏任务
 GET    /api/distillation            # 蒸馏任务列表
+GET    /api/distillation/{id}/loss  # 获取蒸馏 loss 数据
 GET    /api/distillation/{id}/log/stream # SSE 蒸馏日志流
+
+# API Key
+GET    /api/apikeys                 # 列出当前用户密钥
+POST   /api/apikeys                 # 创建新密钥
+DELETE /api/apikeys/{id}            # 删除密钥
+
+# OpenAI 兼容接口（使用 API Key 认证）
+GET    /api/v1/models               # 模型列表
+POST   /api/v1/chat/completions    # 对话补全（支持 stream）
 
 # 对话
 GET    /api/chat/models             # 可用对话模型
@@ -469,6 +533,17 @@ MODEL_DOWNLOAD_MODE = "mock"
 
 ### Q：微调后的模型可以再训练吗？
 - 可以。微调与蒸馏产出的模型状态为 `ready`，可直接在「傻瓜微调」「专业训练」「模型蒸馏」中作为基础模型/学生模型再次使用，实现迭代提升。
+
+### Q：如何使用 API Key？
+1. 在「API 密钥」页面生成密钥（仅创建时显示完整密钥，后续只显示前缀）
+2. 调用 OpenAI 兼容接口时，在请求头中添加 `Authorization: Bearer em-xxxxxxxx`
+3. Base URL 为 `http://localhost:8080/api/v1`
+4. 支持 `POST /chat/completions`（流式与非流式）与 `GET /models`
+
+### Q：Loss 曲线不显示？
+- 确保训练任务已经开始并有 loss 数据输出
+- 曲线每 3 秒自动刷新一次
+- 蒸馏任务会同时显示 total / distill / ce 三条曲线
 
 ## 📝 License
 

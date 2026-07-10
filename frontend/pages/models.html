@@ -77,7 +77,7 @@
             <div class="list-item-main">
               <div class="list-item-title">
                 ${App.escapeHtml(m.name)}
-                ${m.source === "finetune" ? '<span class="tag">微调</span>' : '<span class="tag">基础</span>'}
+                ${m.source === "finetune" ? '<span class="tag">微调</span>' : m.source === "distill" ? '<span class="tag">蒸馏</span>' : '<span class="tag">基础</span>'}
                 ${m.is_active ? '<span class="badge badge-accent">默认对话</span>' : ''}
               </div>
               <div class="list-item-sub">
@@ -90,6 +90,7 @@
               ${App.statusBadge(m.status)}
               ${m.status === "downloading" || m.status === "pending" ? `<button class="btn btn-ghost btn-sm" onclick="viewLog('${m.id}')">查看日志</button>` : ""}
               ${m.status === "ready" && !m.is_active ? `<button class="btn btn-secondary btn-sm" onclick="setActive('${m.id}')">设为默认</button>` : ""}
+              <button class="btn btn-ghost btn-sm" onclick="renameModel('${m.id}','${App.escapeHtml(m.name)}')">重命名</button>
               <button class="btn btn-danger btn-sm" onclick="delModel('${m.id}','${App.escapeHtml(m.name)}')">删除</button>
             </div>
           </div>
@@ -125,6 +126,42 @@
         loadModels();
       } catch (err) { App.toast(err.message, "error"); }
     }
+
+    async function renameModel(id, oldName) {
+      const body = document.createElement("div");
+      body.innerHTML = `
+        <div class="form-group">
+          <label class="form-label">新名称</label>
+          <input class="form-input" id="rn-input" value="${App.escapeHtml(oldName)}">
+        </div>
+      `;
+      const footer = document.createElement("div");
+      footer.style.textAlign = "right";
+      footer.innerHTML = `<button class="btn btn-primary" id="rn-confirm">确认</button>`;
+      const { close } = App.modal({ title: "重命名模型", body, footer });
+      const input = body.querySelector("#rn-input");
+      input.focus();
+      input.select();
+      input.addEventListener("keydown", (e) => { if (e.key === "Enter") footer.querySelector("#rn-confirm").click(); });
+      const confirmBtn = footer.querySelector("#rn-confirm");
+      confirmBtn.onclick = async () => {
+        const newName = input.value.trim();
+        if (!newName) { App.toast("名称不能为空", "error"); return; }
+        if (newName === oldName) { close(); return; }
+        confirmBtn.disabled = true; confirmBtn.textContent = "提交中...";
+        try {
+          await App.api.patch(`/api/models/${id}`, { name: newName });
+          App.toast("已重命名", "success");
+          close();
+          loadModels();
+        } catch (err) {
+          App.toast(err.message, "error");
+          confirmBtn.disabled = false; confirmBtn.textContent = "确认";
+        }
+      };
+    }
+
+    window.renameModel = renameModel;
 
     loadModels();
   </script>
