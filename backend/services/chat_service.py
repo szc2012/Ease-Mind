@@ -41,8 +41,13 @@ def _strip_think(text: str) -> str:
 
 
 def _load_model(model_path: str):
-    """加载模型与分词器（带缓存）"""
+    """加载模型与分词器（带缓存，双重检查锁定避免持锁加载）"""
+    # 第一次检查（锁外，快速路径）
+    if model_path in _MODEL_CACHE:
+        return _MODEL_CACHE[model_path]
+
     with _CACHE_LOCK:
+        # 第二次检查（锁内，防止重复加载）
         if model_path in _MODEL_CACHE:
             return _MODEL_CACHE[model_path]
 
@@ -130,16 +135,25 @@ def generate_reply_stream(user_message: str, history: list, model_path: str):
     )
 
     # 在线程中跑生成，主线程读取流
-    thread = threading.Thread(
-        target=lambda: model.generate(**generate_kwargs),
-        daemon=True,
-    )
+    gen_error = [None]
+
+    def _generate():
+        try:
+            model.generate(**generate_kwargs)
+        except Exception as e:
+            gen_error[0] = e
+
+    thread = threading.Thread(target=_generate, daemon=True)
     thread.start()
 
     # 直接透传所有 token（包含 <think>...</think> 思考过程）
     for raw_chunk in streamer:
         if raw_chunk:
             yield raw_chunk
+
+    thread.join()
+    if gen_error[0]:
+        raise gen_error[0]
 
 
 def generate_reply(user_message: str, history: list, model_path: str) -> str:

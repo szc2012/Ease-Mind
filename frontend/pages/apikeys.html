@@ -90,7 +90,7 @@ print(response.choices[0].message.content)</pre>
       try {
         const models = await App.api.get("/api/chat/models");
         const sel = document.getElementById("k-model");
-        const ready = models.filter(m => m.is_active || true);
+        const ready = models.filter(m => m.is_active);
         sel.innerHTML = `<option value="">不绑定（使用默认模型）</option>` +
           ready.map(m => `<option value="${m.id}">${App.escapeHtml(m.name)}${m.source === "finetune" ? "（微调）" : ""}${m.source === "distill" ? "（蒸馏）" : ""}</option>`).join("");
       } catch (err) { App.toast(err.message, "error"); }
@@ -115,8 +115,13 @@ print(response.choices[0].message.content)</pre>
         const copyBtn = document.createElement("button");
         copyBtn.className = "btn btn-primary btn-sm mt-2";
         copyBtn.textContent = "复制密钥";
-        copyBtn.onclick = () => {
-          navigator.clipboard.writeText(key.key).then(() => App.toast("已复制", "success"));
+        copyBtn.onclick = async () => {
+          try {
+            await navigator.clipboard.writeText(key.key);
+            App.toast("已复制", "success");
+          } catch (e) {
+            App.toast("复制失败，请手动选中复制", "error");
+          }
         };
         body.appendChild(copyBtn);
         App.modal({ title: "密钥已生成", body });

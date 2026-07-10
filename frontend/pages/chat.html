@@ -174,7 +174,7 @@
 
     function renderBubble(role, content) {
       const isUser = role === "user";
-      const avatar = isUser ? App.getUser().username.slice(0,1).toUpperCase() : "E";
+      const u = App.getUser(); const avatar = isUser ? (u?.username || "U").slice(0,1).toUpperCase() : "E";
       return `
         <div class="chat-bubble ${role}">
           <div class="bubble-avatar">${avatar}</div>

@@ -89,7 +89,7 @@
     async function loadParams() {
       try {
         const data = await App.api.get("/api/training/params");
-        paramConfig = data.data.professional_params;
+        paramConfig = data?.data?.professional_params || {};
         const el = document.getElementById("param-fields");
         el.innerHTML = Object.entries(paramConfig).map(([key, cfg]) => `
           <div class="form-group">
@@ -192,7 +192,7 @@
         const pre = document.createElement("pre");
         pre.className = "log-viewer";
         pre.style.maxHeight = "420px";
-        pre.textContent = data.data.log || "（暂无日志）";
+        pre.textContent = data?.data?.log || "（暂无日志）";
         App.modal({ title: "训练日志", body: pre });
       } catch (err) { App.toast(err.message, "error"); }
     }

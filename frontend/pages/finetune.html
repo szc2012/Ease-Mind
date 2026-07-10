@@ -53,6 +53,7 @@
     `);
 
     let selectedPreset = "balanced";
+    let lossTimer = null;
 
     async function loadOptions() {
       try {
@@ -94,7 +95,9 @@
             card.style.borderColor = "var(--accent)";
           };
         });
-        el.querySelector('[data-preset="balanced"]').click();
+        const balancedCard = el.querySelector('[data-preset="balanced"]');
+        if (balancedCard) balancedCard.click();
+        else { const first = el.querySelector('[data-preset]'); if (first) first.click(); }
       } catch (err) { App.toast(err.message, "error"); }
     }
 
@@ -136,15 +139,15 @@
       const pct = document.getElementById("pct");
       const tStatus = document.getElementById("t-status");
       const lossChart = document.getElementById("loss-chart");
-      let lossTimer = null;
 
       // 定时拉取 loss 数据更新曲线
       async function refreshLoss() {
         try {
           const data = await App.api.get(`/api/training/${taskId}/loss`);
-          App.drawLossChart(lossChart, data.data.points);
+          App.drawLossChart(lossChart, data?.data?.points || []);
         } catch (e) { /* 忽略 */ }
       }
+      if (lossTimer) { clearInterval(lossTimer); lossTimer = null; }
       lossTimer = setInterval(refreshLoss, 3000);
       refreshLoss();
 

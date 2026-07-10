@@ -148,6 +148,10 @@ async def stream_task_log(
                 if fresh.status in ("completed", "failed"):
                     yield f"data: {json.dumps({'type': 'done', 'status': fresh.status, 'progress': fresh.progress})}\n\n"
                     break
+            else:
+                # 任务已被删除，退出循环
+                yield f"data: {json.dumps({'type': 'done', 'status': 'cancelled', 'progress': 0})}\n\n"
+                break
             tick += 1
             if tick % 15 == 0:
                 yield f": keep-alive\n\n"

@@ -17,9 +17,6 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
-import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM
-
 from config import settings, LOG_DIR, MODEL_DIR
 from database import SessionLocal
 from models import DistillationTask, AIModel, Dataset
@@ -58,6 +55,7 @@ def read_log(task_id: str) -> str:
 
 
 def _get_device() -> str:
+    import torch
     if torch.backends.mps.is_available():
         return "mps"
     if torch.cuda.is_available():
@@ -81,6 +79,7 @@ def _prepare_chunks(text: str, tokenizer, max_len: int) -> list:
 
 def _load_model(model_path: str, device: str, dtype):
     """加载模型与 tokenizer"""
+    from transformers import AutoTokenizer, AutoModelForCausalLM
     tok = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
     if tok.pad_token_id is None:
         tok.pad_token = tok.eos_token
@@ -234,9 +233,9 @@ def _run_real_distillation(task_id: str) -> None:
         with torch.no_grad():
             for i in range(0, len(chunks), batch_size):
                 batch_chunks = chunks[i:i+batch_size]
-                # 用教师 tokenizer 重新编码
+                # 用教师 tokenizer 重新编码（用学生 tokenizer 解码回文本，再用教师 tokenizer 编码）
                 t_inputs = teacher_tok(
-                    [teacher_tok.decode(c) for c in batch_chunks],
+                    [student_tok.decode(c) for c in batch_chunks],
                     return_tensors="pt",
                     padding="max_length",
                     truncation=True,
@@ -259,6 +258,18 @@ def _run_real_distillation(task_id: str) -> None:
         write_log(task_id, "  教师软标签生成完成")
         task.progress = 35.0
         db.commit()
+
+        # 释放教师模型显存/内存
+        del teacher_model
+        try:
+            import torch
+            if torch.backends.mps.is_available():
+                torch.mps.empty_cache()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            pass
+        write_log(task_id, "  教师模型已卸载，释放显存")
 
         # ---- 阶段 4：蒸馏训练学生模型 ----
         write_log(task_id, "")

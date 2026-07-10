@@ -1,4 +1,5 @@
 """数据集路由：上传文件(docx/txt)、抓取网页、列表、删除"""
+from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 
@@ -7,6 +8,7 @@ from database import get_db
 from models import User, Dataset
 from schemas import DatasetUrlRequest, DatasetOut, ApiResponse
 from services.dataset_service import save_file_dataset, save_url_dataset
+from config import DATASET_DIR
 
 router = APIRouter(prefix="/api/datasets", tags=["数据集"])
 
@@ -59,6 +61,14 @@ def delete_dataset(
     ds = db.query(Dataset).filter(Dataset.id == dataset_id).first()
     if not ds:
         raise HTTPException(status_code=404, detail="数据集不存在")
+    # 清理本地文件
+    if ds.file_path:
+        try:
+            p = Path(ds.file_path)
+            if p.exists() and DATASET_DIR in p.resolve().parents:
+                p.unlink()
+        except Exception:
+            pass
     db.delete(ds)
     db.commit()
     return ApiResponse(message="数据集已删除")

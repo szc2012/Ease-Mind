@@ -72,6 +72,7 @@
     `);
 
     let paramConfig = {};
+    let lossTimer = null;
 
     async function loadOptions() {
       try {
@@ -124,7 +125,7 @@
       const params = {};
       Object.keys(paramConfig).forEach(key => {
         const v = parseFloat(document.getElementById(`param-${key}`).value);
-        params[key] = isNaN(v) ? paramConfig[key].default : v;
+        params[key] = isNaN(v) ? (paramConfig[key].default ?? 0) : v;
       });
       const btn = document.getElementById("start-btn");
       btn.disabled = true; btn.textContent = "提交中...";
@@ -158,14 +159,14 @@
       const pct = document.getElementById("pct");
       const tStatus = document.getElementById("t-status");
       const lossChart = document.getElementById("loss-chart");
-      let lossTimer = null;
 
       async function refreshLoss() {
         try {
           const data = await App.api.get(`/api/distillation/${taskId}/loss`);
-          App.drawLossChart(lossChart, data.data.points, { showDistill: true });
+          App.drawLossChart(lossChart, data?.data?.points || [], { showDistill: true });
         } catch (e) { /* 忽略 */ }
       }
+      if (lossTimer) { clearInterval(lossTimer); lossTimer = null; }
       lossTimer = setInterval(refreshLoss, 3000);
       refreshLoss();
 

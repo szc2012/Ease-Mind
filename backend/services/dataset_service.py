@@ -24,6 +24,7 @@ def _fetch_url(url: str) -> str:
     from bs4 import BeautifulSoup
     headers = {"User-Agent": "Mozilla/5.0 (compatible; EaseMindBot/1.0)"}
     resp = requests.get(url, headers=headers, timeout=20)
+    resp.raise_for_status()
     resp.encoding = resp.apparent_encoding or "utf-8"
     soup = BeautifulSoup(resp.text, "html.parser")
     for tag in soup(["script", "style", "noscript", "nav", "footer", "header"]):
@@ -40,8 +41,10 @@ def _count_samples(text: str) -> int:
 
 
 def save_file_dataset(filename: str, raw_bytes: bytes, source_name: str) -> Dataset:
-    suffix = Path(filename).suffix.lower()
-    stored = DATASET_DIR / f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{filename}"
+    # 仅取文件名部分，防止路径穿越
+    safe_name = Path(filename).name
+    suffix = Path(safe_name).suffix.lower()
+    stored = DATASET_DIR / f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{safe_name}"
     stored.write_bytes(raw_bytes)
 
     if suffix == ".docx":

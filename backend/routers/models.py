@@ -120,5 +120,15 @@ def delete_model(
 
     db.delete(model)
     db.commit()
+
+    # 从对话模型缓存中移除，释放内存
+    try:
+        from services.chat_service import _MODEL_CACHE, _CACHE_LOCK
+        with _CACHE_LOCK:
+            if model.local_path and model.local_path in _MODEL_CACHE:
+                del _MODEL_CACHE[model.local_path]
+    except Exception:
+        pass
+
     msg = "模型已删除" + ("（本地文件已清理）" if deleted_files else "（未找到本地文件或已清理）")
     return ApiResponse(message=msg)

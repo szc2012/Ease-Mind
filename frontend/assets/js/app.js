@@ -120,7 +120,7 @@ const App = (() => {
     m.className = "modal";
     m.innerHTML = `
       <div class="modal-head">
-        <div class="modal-title">${title || ""}</div>
+        <div class="modal-title">${escapeHtml(title || "")}</div>
         <button class="btn btn-ghost btn-sm" data-close>关闭</button>
       </div>
       <div class="modal-body"></div>
@@ -141,7 +141,7 @@ const App = (() => {
     const user = getUser();
     if (!user) return "";
     const isAdmin = user.role === "admin";
-    const initials = user.username.slice(0, 1).toUpperCase();
+    const initials = (user.username || "?").slice(0, 1).toUpperCase();
 
     const navItems = isAdmin ? [
       { key: "dashboard", label: "概览", icon: "◈", href: "/pages/admin-dashboard.html" },
@@ -271,7 +271,7 @@ const App = (() => {
       cancelled: ["badge-neutral", "已取消"],
     };
     const [cls, label] = map[status] || ["badge-neutral", status];
-    return `<span class="badge ${cls}">${label}</span>`;
+    return `<span class="badge ${cls}">${escapeHtml(label)}</span>`;
   }
 
   function logout() {
@@ -285,6 +285,11 @@ const App = (() => {
     const resp = await fetch(url, {
       headers: { "Authorization": `Bearer ${token}`, "Accept": "text/event-stream" },
     });
+    if (resp.status === 401) {
+      clearAuth();
+      redirectLogin();
+      throw new Error("未登录或登录已失效");
+    }
     if (!resp.ok || !resp.body) {
       throw new Error(`流式请求失败 (${resp.status})`);
     }
@@ -320,6 +325,11 @@ const App = (() => {
       },
       body: JSON.stringify(body),
     });
+    if (resp.status === 401) {
+      clearAuth();
+      redirectLogin();
+      throw new Error("未登录或登录已失效");
+    }
     if (!resp.ok || !resp.body) {
       const txt = await resp.text().catch(() => "");
       throw new Error(`流式请求失败 (${resp.status}) ${txt}`);
@@ -354,7 +364,7 @@ const App = (() => {
       return;
     }
     const xs = points.map(p => p.step);
-    const lossVals = points.map(p => p.loss);
+    const lossVals = points.map(p => p.loss).filter(v => v != null);
     const distillVals = showDistill ? points.map(p => p.distill_loss).filter(v => v != null) : [];
     const ceVals = showDistill ? points.map(p => p.ce_loss).filter(v => v != null) : [];
     const allVals = [...lossVals, ...distillVals, ...ceVals];
