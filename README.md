@@ -35,6 +35,21 @@
 - macOS / Linux / Windows
 - 可选：Apple Silicon（MPS）/ NVIDIA GPU（CUDA）用于加速
 
+### 方式一：Docker 部署（推荐）
+
+```bash
+git clone https://github.com/szc2012/Ease-Mind.git
+cd Ease-Mind
+docker compose up -d --build
+```
+
+打开浏览器访问 http://localhost:8080
+
+> 💡 数据持久化通过 Docker Volume 自动管理，容器重建后模型、数据集、数据库不丢失。
+> 如需修改管理员密码或训练模式，编辑 `docker-compose.yml` 中的 `environment` 即可。
+
+### 方式二：本地安装
+
 ### 安装
 
 ```bash
@@ -127,6 +142,9 @@ Ease-Mind/
 │       ├── apikeys.html               # API 密钥
 │       └── chat.html                  # 在线对话
 ├── img/                        # 项目截图
+├── Dockerfile                  # Docker 镜像构建文件
+├── docker-compose.yml          # Docker Compose 编排
+├── .dockerignore               # Docker 构建忽略文件
 └── data/                       # 运行时数据（自动创建，不上传）
     ├── easemind.db             # SQLite 数据库
     ├── models/                 # 下载/微调/蒸馏的模型文件
