@@ -198,11 +198,7 @@ const App = (() => {
     return `
       <aside class="sidebar">
         <div class="sidebar-brand">
-          <div class="logo">E</div>
-          <div>
-            <div class="brand-name">EaseMind</div>
-            <div class="brand-sub">AI 训练平台</div>
-          </div>
+          <img src="/assets/ease-mind-logo.svg" alt="EaseMind" class="brand-logo">
         </div>
         <nav class="sidebar-nav">
           <div class="nav-section-label">${isAdmin ? "管理工作台" : "我的工作台"}</div>
