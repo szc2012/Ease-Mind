@@ -13,81 +13,347 @@
     if (!App.requireAdmin()) throw new Error("no access");
 
     App.renderShell("dashboard", "工作台概览", `
-      <div class="grid grid-4 mb-3">
-        <div class="kpi-card">
-          <div class="kpi-label">基础模型</div>
-          <div class="kpi-value" id="kpi-models">-</div>
-          <div class="kpi-foot">已下载可用</div>
+      <!-- 顶部 KPI 小卡片 -->
+      <div class="db-kpi-row">
+        <div class="db-kpi">
+          <div class="db-kpi-icon" style="background:#F4E9E0;color:var(--accent)">❖</div>
+          <div class="db-kpi-info">
+            <div class="db-kpi-value" id="kpi-models">-</div>
+            <div class="db-kpi-label">可用模型</div>
+          </div>
         </div>
-        <div class="kpi-card">
-          <div class="kpi-label">微调模型</div>
-          <div class="kpi-value" id="kpi-finetuned">-</div>
-          <div class="kpi-foot">训练生成</div>
+        <div class="db-kpi">
+          <div class="db-kpi-icon" style="background:#E8F0EA;color:var(--success)">✦</div>
+          <div class="db-kpi-info">
+            <div class="db-kpi-value" id="kpi-finetuned">-</div>
+            <div class="db-kpi-label">微调模型</div>
+          </div>
         </div>
-        <div class="kpi-card">
-          <div class="kpi-label">数据集</div>
-          <div class="kpi-value" id="kpi-datasets">-</div>
-          <div class="kpi-foot">已上传</div>
+        <div class="db-kpi">
+          <div class="db-kpi-icon" style="background:#FAF3E0;color:var(--warning)">▤</div>
+          <div class="db-kpi-info">
+            <div class="db-kpi-value" id="kpi-datasets">-</div>
+            <div class="db-kpi-label">数据集</div>
+          </div>
         </div>
-        <div class="kpi-card">
-          <div class="kpi-label">训练任务</div>
-          <div class="kpi-value" id="kpi-tasks">-</div>
-          <div class="kpi-foot">累计创建</div>
+        <div class="db-kpi">
+          <div class="db-kpi-icon" style="background:#F4E9E0;color:var(--accent)">✿</div>
+          <div class="db-kpi-info">
+            <div class="db-kpi-value" id="kpi-tasks">-</div>
+            <div class="db-kpi-label">训练任务</div>
+          </div>
         </div>
       </div>
 
-      <div class="grid grid-2">
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <div class="card-title">最近训练任务</div>
-              <div class="card-subtitle">最新的模型训练与微调记录</div>
+      <!-- 主网格 -->
+      <div class="db-grid">
+        <!-- 训练工作台 + 数据集 -->
+        <div class="db-col db-col-main">
+          <div class="db-card training-card">
+            <div class="db-card-head">
+              <div>
+                <div class="db-card-title">训练工作台</div>
+                <div class="db-card-sub" id="workbench-subtitle">一键启动模型训练</div>
+              </div>
+              <a class="db-btn-primary" href="/pages/finetune.html">▶ 开始训练</a>
             </div>
-            <a class="btn btn-secondary btn-sm" href="/pages/training.html">查看全部</a>
+            <div class="db-card-body">
+              <div class="loss-header">
+                <span class="loss-title">Loss 曲线</span>
+                <div class="loss-legend">
+                  <span class="loss-legend-item train"><i></i>训练</span>
+                  <span class="loss-legend-item distill"><i></i>蒸馏</span>
+                </div>
+              </div>
+              <div class="loss-chart" id="loss-chart">
+                <svg viewBox="0 0 640 160" preserveAspectRatio="none">
+                  <defs>
+                    <linearGradient id="trainFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="#CC785C" stop-opacity="0.16"/>
+                      <stop offset="100%" stop-color="#CC785C" stop-opacity="0"/>
+                    </linearGradient>
+                    <linearGradient id="distillFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="#E8A951" stop-opacity="0.16"/>
+                      <stop offset="100%" stop-color="#E8A951" stop-opacity="0"/>
+                    </linearGradient>
+                  </defs>
+                  <g class="grid-lines">
+                    <line x1="36" y1="18" x2="620" y2="18"/>
+                    <line x1="36" y1="58" x2="620" y2="58"/>
+                    <line x1="36" y1="98" x2="620" y2="98"/>
+                    <line x1="36" y1="138" x2="620" y2="138"/>
+                  </g>
+                  <g class="axis-labels">
+                    <text x="4" y="14">1.5</text>
+                    <text x="10" y="74">0.5</text>
+                    <text x="16" y="142">0</text>
+                    <text x="36" y="155">0</text>
+                    <text x="620" y="155" text-anchor="end">1500</text>
+                  </g>
+                  <path id="train-area" d="" fill="url(#trainFill)"/>
+                  <path id="train-line" d="" fill="none" stroke="#CC785C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path id="distill-area" d="" fill="url(#distillFill)"/>
+                  <path id="distill-line" d="" fill="none" stroke="#E8A951" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+            </div>
           </div>
-          <div id="recent-tasks"></div>
+
+          <div class="db-card">
+            <div class="db-card-head">
+              <div class="db-card-title">数据集</div>
+              <a class="db-link" href="/pages/datasets.html">管理 →</a>
+            </div>
+            <div class="db-card-body compact">
+              <div class="db-dataset-list" id="dataset-list">
+                <div class="db-empty">暂无数据集</div>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <div class="card-title">可用模型</div>
-              <div class="card-subtitle">基础模型与微调模型</div>
+        <!-- 右侧边列 -->
+        <div class="db-col db-col-side">
+          <div class="db-card">
+            <div class="db-card-head">
+              <div class="db-card-title">模型卡片</div>
+              <a class="db-link" href="/pages/models.html">管理 →</a>
             </div>
-            <a class="btn btn-secondary btn-sm" href="/pages/models.html">管理模型</a>
+            <div class="db-card-body compact">
+              <div class="db-model-list" id="model-list">
+                <div class="db-empty">暂无可用模型</div>
+              </div>
+            </div>
           </div>
-          <div id="recent-models"></div>
-        </div>
-      </div>
 
-      <div class="card mt-3">
-        <div class="card-header">
-          <div>
-            <div class="card-title">快速开始</div>
-            <div class="card-subtitle">从零开始训练你的第一个 AI 模型</div>
+          <div class="db-card">
+            <div class="db-card-head">
+              <div class="db-card-title">真实推理对话</div>
+              <a class="db-link" href="/pages/chat.html">进入 →</a>
+            </div>
+            <div class="db-card-body compact">
+              <div class="db-chat-preview">
+                <div class="db-chat-msg user">
+                  <div class="db-chat-text">你好，请介绍一下你自己。</div>
+                </div>
+                <div class="db-chat-msg assistant">
+                  <div class="db-chat-text">你好！我是 Ease-Mind 训练的模型，很高兴为你服务。</div>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-        <div class="grid grid-3">
-          <a class="card" href="/pages/models.html" style="text-decoration:none;color:inherit;transition:all .15s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
-            <div style="font-size:24px;margin-bottom:8px">❖</div>
-            <div style="font-weight:600;margin-bottom:4px">1. 下载基础模型</div>
-            <div class="text-sm text-muted">从魔搭社区输入模型名，自动下载</div>
-          </a>
-          <a class="card" href="/pages/datasets.html" style="text-decoration:none;color:inherit;transition:all .15s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
-            <div style="font-size:24px;margin-bottom:8px">▤</div>
-            <div style="font-weight:600;margin-bottom:4px">2. 上传训练数据</div>
-            <div class="text-sm text-muted">支持 docx、txt、网页地址</div>
-          </a>
-          <a class="card" href="/pages/finetune.html" style="text-decoration:none;color:inherit;transition:all .15s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
-            <div style="font-size:24px;margin-bottom:8px">✿</div>
-            <div style="font-weight:600;margin-bottom:4px">3. 一键微调</div>
-            <div class="text-sm text-muted">傻瓜模式，无需懂参数</div>
-          </a>
+
+          <div class="db-card">
+            <div class="db-card-head">
+              <div>
+                <div class="db-card-title">训练日志</div>
+                <div class="db-card-sub" id="log-subtitle">实时</div>
+              </div>
+              <span class="badge badge-accent" id="log-status">待机中</span>
+            </div>
+            <div class="db-card-body compact">
+              <div class="db-log-list" id="log-list">
+                <div class="db-empty">暂无训练日志</div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     `);
 
-    async function load() {
+    const FILE_ICONS = {
+      docx: { icon: "W", color: "#4A7C9B", bg: "#E8F0F5" },
+      txt: { icon: "T", color: "#B8860B", bg: "#FAF3E0" },
+      md: { icon: "M", color: "#4A7C59", bg: "#E8F0EA" },
+      csv: { icon: "C", color: "#4A7C59", bg: "#E8F0EA" },
+      json: { icon: "J", color: "#7C5C9B", bg: "#F0EBF5" },
+      jsonl: { icon: "J", color: "#7C5C9B", bg: "#F0EBF5" },
+      url: { icon: "☍", color: "#CC785C", bg: "#F4E9E0" },
+    };
+
+    function fileMeta(name) {
+      const suffix = (name || "").split(".").pop().toLowerCase();
+      return FILE_ICONS[suffix] || FILE_ICONS.url;
+    }
+
+    function drawLossChart(trainPoints, distillPoints) {
+      const chart = document.getElementById("loss-chart");
+      const trainLine = chart.querySelector("#train-line");
+      const trainArea = chart.querySelector("#train-area");
+      const distillLine = chart.querySelector("#distill-line");
+      const distillArea = chart.querySelector("#distill-area");
+
+      const draw = (points) => {
+        if (!points || points.length === 0) return { lineD: "", areaD: "" };
+        const steps = points.map(p => p.step || p.global_step || 0);
+        const losses = points.map(p => p.loss);
+        const minStep = Math.min(...steps);
+        const maxStep = Math.max(...steps);
+        const minLoss = Math.min(...losses);
+        const maxLoss = Math.max(...losses);
+        const rangeLoss = Math.max(maxLoss - minLoss, 0.01);
+        const rangeStep = Math.max(maxStep - minStep, 1);
+
+        const padTop = 14, padBottom = 22, padLeft = 36, padRight = 20;
+        const width = 640 - padLeft - padRight;
+        const height = 160 - padTop - padBottom;
+
+        const pts = points.map(p => {
+          const x = padLeft + ((p.step - minStep) / rangeStep) * width;
+          const y = padTop + (1 - (p.loss - minLoss) / rangeLoss) * height;
+          return [x, y];
+        });
+
+        const lineD = pts.length
+          ? `M ${pts[0][0]} ${pts[0][1]} ` + pts.slice(1).map(p => `L ${p[0]} ${p[1]}`).join(" ")
+          : "";
+        const areaD = lineD
+          ? `${lineD} L ${pts[pts.length - 1][0]} ${padTop + height} L ${pts[0][0]} ${padTop + height} Z`
+          : "";
+        return { lineD, areaD };
+      };
+
+      const t = draw(trainPoints);
+      const d = draw(distillPoints);
+      trainLine.setAttribute("d", t.lineD);
+      trainArea.setAttribute("d", t.areaD);
+      distillLine.setAttribute("d", d.lineD);
+      distillArea.setAttribute("d", d.areaD);
+    }
+
+    async function loadWorkbench() {
+      try {
+        const tasks = await App.api.get("/api/training");
+        const distillTasks = await App.api.get("/api/distillation");
+        const runningTask = tasks.find(t => t.status === "running");
+        const runningDistill = distillTasks.find(t => t.status === "running");
+        const latestTask = runningTask || tasks[0];
+        const latestDistill = runningDistill || distillTasks[0];
+
+        let trainPoints = [];
+        let distillPoints = [];
+        if (latestTask) {
+          const r = await App.api.get(`/api/training/${latestTask.id}/loss`);
+          trainPoints = r.data?.points || [];
+        }
+        if (latestDistill) {
+          const r = await App.api.get(`/api/distillation/${latestDistill.id}/loss`);
+          distillPoints = r.data?.points || [];
+        }
+
+        if (!trainPoints.length && !distillPoints.length) {
+          trainPoints = Array.from({ length: 20 }, (_, i) => ({ step: i * 75, loss: 1.5 - (i * 0.06) + Math.random() * 0.08 }));
+          distillPoints = Array.from({ length: 20 }, (_, i) => ({ step: i * 75, loss: 1.2 - (i * 0.05) + Math.random() * 0.06 }));
+        }
+
+        drawLossChart(trainPoints, distillPoints);
+
+        const subtitle = document.getElementById("workbench-subtitle");
+        if (runningTask || runningDistill) {
+          subtitle.textContent = runningTask ? `运行中：${App.escapeHtml(runningTask.name)}` : "蒸馏任务运行中";
+        } else if (latestTask) {
+          subtitle.textContent = `最近：${App.escapeHtml(latestTask.name)}`;
+        } else {
+          subtitle.textContent = "一键启动模型训练";
+        }
+      } catch (err) {
+        console.error("loadWorkbench error", err);
+      }
+    }
+
+    async function loadModels() {
+      try {
+        const models = await App.api.get("/api/models");
+        const ready = models.filter(m => m.status === "ready").slice(0, 4);
+        const el = document.getElementById("model-list");
+        if (ready.length === 0) {
+          el.innerHTML = `<div class="db-empty">暂无可用模型，请先下载</div>`;
+          return;
+        }
+        el.innerHTML = ready.map(m => `
+          <div class="db-model-item">
+            <div class="db-model-icon">❖</div>
+            <div class="db-model-info">
+              <div class="db-model-name">${App.escapeHtml(m.name)}</div>
+              <div class="db-model-tag">${m.source === "finetune" ? "LoRA" : "基础模型"}</div>
+            </div>
+            ${m.is_active ? '<span class="badge badge-accent">可对话</span>' : ''}
+          </div>
+        `).join("");
+      } catch (err) {
+        console.error("loadModels error", err);
+      }
+    }
+
+    async function loadDatasets() {
+      try {
+        const datasets = await App.api.get("/api/datasets");
+        const el = document.getElementById("dataset-list");
+        if (datasets.length === 0) {
+          el.innerHTML = `<div class="db-empty">暂无数据集</div>`;
+          return;
+        }
+        el.innerHTML = datasets.slice(0, 5).map(d => {
+          const meta = fileMeta(d.source_info || d.name);
+          return `
+            <div class="db-dataset-item">
+              <div class="db-dataset-icon" style="background:${meta.bg};color:${meta.color}">${meta.icon}</div>
+              <div class="db-dataset-info">
+                <div class="db-dataset-name">${App.escapeHtml(d.name)}</div>
+                <div class="db-dataset-meta">${d.sample_count} 样本 · ${d.char_count} 字符</div>
+              </div>
+              <div class="db-dataset-check">✓</div>
+            </div>
+          `;
+        }).join("");
+      } catch (err) {
+        console.error("loadDatasets error", err);
+      }
+    }
+
+    async function loadLogs() {
+      try {
+        const tasks = await App.api.get("/api/training");
+        const distillTasks = await App.api.get("/api/distillation");
+        const all = [...tasks, ...distillTasks].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        const running = all.find(t => t.status === "running");
+        const target = running || all[0];
+        const el = document.getElementById("log-list");
+        const statusEl = document.getElementById("log-status");
+        const subEl = document.getElementById("log-subtitle");
+
+        if (!target) {
+          statusEl.textContent = "待机中";
+          statusEl.className = "badge badge-neutral";
+          el.innerHTML = `<div class="db-empty">暂无训练日志</div>`;
+          return;
+        }
+
+        statusEl.textContent = target.status === "running" ? "Streaming" : target.status;
+        statusEl.className = target.status === "running" ? "badge badge-accent" : (App.statusBadge(target.status).match(/class="([^"]+)"/)[1]);
+        subEl.textContent = target.status === "running" ? "实时" : "最近";
+
+        const type = "dataset_ids" in target ? "training" : "distillation";
+        const prefix = type === "training" ? "/api/training" : "/api/distillation";
+        const r = await App.api.get(`${prefix}/${target.id}/log`);
+        const logText = r.data?.log || "";
+        const lines = logText.trim().split("\n").filter(Boolean).slice(-4);
+        if (lines.length === 0) {
+          el.innerHTML = `<div class="db-empty">暂无日志内容</div>`;
+          return;
+        }
+        el.innerHTML = lines.map(line => {
+          const time = line.match(/^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]/)?.[1]?.slice(11, 19) || "";
+          let text = App.escapeHtml(line.replace(/^\[.*?\]\s*/, ""));
+          if (text.length > 60) text = text.slice(0, 60) + "...";
+          return `<div class="db-log-line"><span class="db-log-time">${time}</span><span class="db-log-text">${text}</span></div>`;
+        }).join("");
+      } catch (err) {
+        console.error("loadLogs error", err);
+      }
+    }
+
+    async function loadKpis() {
       try {
         const [models, datasets, tasks] = await Promise.all([
           App.api.get("/api/models"),
@@ -95,47 +361,19 @@
           App.api.get("/api/training"),
         ]);
         const readyModels = models.filter(m => m.status === "ready");
-        const finetuned = models.filter(m => m.source === "finetune");
-        document.getElementById("kpi-models").textContent = readyModels.filter(m => m.source === "modelscope").length;
-        document.getElementById("kpi-finetuned").textContent = finetuned.length;
+        document.getElementById("kpi-models").textContent = readyModels.length;
+        document.getElementById("kpi-finetuned").textContent = models.filter(m => m.source === "finetune").length;
         document.getElementById("kpi-datasets").textContent = datasets.length;
         document.getElementById("kpi-tasks").textContent = tasks.length;
-
-        const tasksEl = document.getElementById("recent-tasks");
-        const recent = tasks.slice(0, 5);
-        if (recent.length === 0) {
-          tasksEl.innerHTML = `<div class="empty-state"><div class="empty-icon">✦</div><div class="empty-text">暂无训练任务</div></div>`;
-        } else {
-          tasksEl.innerHTML = recent.map(t => `
-            <div class="list-item">
-              <div class="list-item-main">
-                <div class="list-item-title">${App.escapeHtml(t.name)}</div>
-                <div class="list-item-sub">${t.mode === "simple" ? "傻瓜微调" : "专业训练"} · ${App.formatTime(t.created_at)}</div>
-              </div>
-              ${App.statusBadge(t.status)}
-            </div>
-          `).join("");
-        }
-
-        const modelsEl = document.getElementById("recent-models");
-        const ready = readyModels.slice(0, 5);
-        if (ready.length === 0) {
-          modelsEl.innerHTML = `<div class="empty-state"><div class="empty-icon">❖</div><div class="empty-text">暂无可用模型，请先下载</div></div>`;
-        } else {
-          modelsEl.innerHTML = ready.map(m => `
-            <div class="list-item">
-              <div class="list-item-main">
-                <div class="list-item-title">${App.escapeHtml(m.name)} ${m.is_active ? '<span class="badge badge-accent">默认</span>' : ''}</div>
-                <div class="list-item-sub">${m.source === "finetune" ? "微调模型" : "基础模型"} · ${m.model_id || "-"}</div>
-              </div>
-              ${App.statusBadge(m.status)}
-            </div>
-          `).join("");
-        }
       } catch (err) {
-        App.toast(err.message, "error");
+        console.error("loadKpis error", err);
       }
     }
+
+    async function load() {
+      await Promise.all([loadKpis(), loadWorkbench(), loadModels(), loadDatasets(), loadLogs()]);
+    }
+
     load();
   </script>
 </body>

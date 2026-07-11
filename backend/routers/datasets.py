@@ -1,4 +1,4 @@
-"""数据集路由：上传文件(docx/txt)、抓取网页、列表、删除"""
+"""数据集路由：上传文件(docx/txt/md/csv/json)、抓取网页、列表、删除"""
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
@@ -29,8 +29,8 @@ async def upload_file(
 ):
     filename = file.filename or "untitled.txt"
     suffix = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-    if suffix not in ("docx", "txt", "md", "csv"):
-        raise HTTPException(status_code=400, detail="仅支持 docx / txt / md / csv 文件")
+    if suffix not in ("docx", "txt", "md", "csv", "json", "jsonl"):
+        raise HTTPException(status_code=400, detail="仅支持 docx / txt / md / csv / json / jsonl 文件")
     raw = await file.read()
     if not raw:
         raise HTTPException(status_code=400, detail="文件为空")

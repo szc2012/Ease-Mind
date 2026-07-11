@@ -59,7 +59,8 @@ def _load_model(model_path: str):
 
         tok = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
         if tok.pad_token_id is None:
-            tok.pad_token = tok.eos_token
+            tok.pad_token_id = tok.eos_token_id
+
         model = AutoModelForCausalLM.from_pretrained(
             model_path,
             dtype=dtype,
@@ -132,6 +133,7 @@ def generate_reply_stream(user_message: str, history: list, model_path: str):
         repetition_penalty=1.05,
         pad_token_id=tokenizer.eos_token_id,
         streamer=streamer,
+        use_cache=False,
     )
 
     # 在线程中跑生成，主线程读取流
