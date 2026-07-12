@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>频道接入 - EaseMind</title>
+  <link rel="stylesheet" href="/assets/css/style.css">
+  <link rel="icon" type="image/svg+xml" href="/assets/ease-mind-logo.svg">
+</head>
+<body>
+  <script src="/assets/js/app.js"></script>
+  <script>
+    if (!App.requireAdmin()) throw new Error("no access");
+
+    App.renderShell("channels", "频道接入", `
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">创建频道</div>
+            <div class="card-subtitle">接入第三方聊天平台，将本平台模型暴露给群机器人</div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">频道名称</label>
+            <input class="form-input" id="c-name" placeholder="例如：钉钉客服群">
+          </div>
+          <div class="form-group">
+            <label class="form-label">平台</label>
+            <select class="form-select" id="c-platform">
+              <option value="custom">通用（Custom）</option>
+              <option value="dingtalk">钉钉</option>
+              <option value="feishu">飞书</option>
+              <option value="wecom">企业微信</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">绑定模型</label>
+          <select class="form-select" id="c-model"></select>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Webhook URL（可选）</label>
+            <input class="form-input" id="c-webhook" placeholder="主动推送回复的地址">
+          </div>
+          <div class="form-group">
+            <label class="form-label">签名密钥（可选）</label>
+            <input class="form-input" id="c-secret" placeholder="用于验证请求来源">
+          </div>
+        </div>
+        <button class="btn btn-primary btn-lg" id="create-btn">创建频道</button>
+      </div>
+
+      <div class="card mt-3">
+        <div class="card-header">
+          <div>
+            <div class="card-title">频道列表</div>
+            <div class="card-subtitle">将 Webhook 地址配置到对应聊天平台即可生效</div>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="loadList()">刷新</button>
+        </div>
+        <div id="channel-list"></div>
+      </div>
+    `);
+
+    const PLATFORM_LABELS = {
+      dingtalk: "钉钉", feishu: "飞书", wecom: "企业微信", custom: "通用",
+    };
+
+    async function loadModels() {
+      try {
+        const models = await App.api.get("/api/chat/models");
+        const sel = document.getElementById("c-model");
+        if (models.length === 0) {
+          sel.innerHTML = `<option value="">（暂无可用模型）</option>`;
+          return;
+        }
+        sel.innerHTML = models.map(m => `<option value="${m.id}">${App.escapeHtml(m.name)}${m.source === "finetune" ? "（微调）" : ""}</option>`).join("");
+      } catch (err) { App.toast(err.message, "error"); }
+    }
+
+    async function loadList() {
+      const el = document.getElementById("channel-list");
+      try {
+        const list = await App.api.get("/api/channels");
+        if (list.length === 0) {
+          el.innerHTML = `<div class="empty-state"><div class="empty-icon">✦</div><div class="empty-text">暂无频道</div></div>`;
+          return;
+        }
+        el.innerHTML = list.map(c => {
+          const webhook = `${location.origin}/api/channels/${c.id}/webhook`;
+          return `
+            <div class="list-item" style="flex-direction:column;align-items:stretch;gap:8px">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+                <div class="list-item-main">
+                  <div class="list-item-title">${App.escapeHtml(c.name)} <span class="tag">${PLATFORM_LABELS[c.platform] || c.platform}</span></div>
+                  <div class="list-item-sub">绑定模型：${App.escapeHtml(c.model_name || c.model_id)} · ${App.formatTime(c.created_at)}</div>
+                </div>
+                <div class="flex items-center gap-1">
+                  <button class="btn btn-ghost btn-sm" onclick="copyWebhook('${webhook}')">复制地址</button>
+                  <button class="btn btn-danger btn-sm" onclick="delChannel('${c.id}','${App.escapeHtml(c.name)}')">删除</button>
+                </div>
+              </div>
+              <div class="form-input" style="font-family:monospace;font-size:12px;color:var(--text-secondary);user-select:all">${App.escapeHtml(webhook)}</div>
+            </div>
+          `;
+        }).join("");
+      } catch (err) { App.toast(err.message, "error"); }
+    }
+
+    async function copyWebhook(url) {
+      try {
+        await navigator.clipboard.writeText(url);
+        App.toast("Webhook 地址已复制", "success");
+      } catch (e) {
+        App.toast("复制失败，请手动选中复制", "error");
+      }
+    }
+
+    async function delChannel(id, name) {
+      if (!confirm(`确定删除频道「${name}」吗？关联对话历史将一并清除。`)) return;
+      try {
+        await App.api.delete(`/api/channels/${id}`);
+        App.toast("频道已删除", "success");
+        loadList();
+      } catch (err) { App.toast(err.message, "error"); }
+    }
+
+    document.getElementById("create-btn").onclick = async () => {
+      const name = document.getElementById("c-name").value.trim();
+      const platform = document.getElementById("c-platform").value;
+      const modelId = document.getElementById("c-model").value;
+      const webhook_url = document.getElementById("c-webhook").value.trim() || null;
+      const secret = document.getElementById("c-secret").value.trim() || null;
+      if (!name) { App.toast("请输入频道名称", "error"); return; }
+      if (!modelId) { App.toast("请选择绑定模型", "error"); return; }
+      const btn = document.getElementById("create-btn");
+      btn.disabled = true; btn.textContent = "创建中...";
+      try {
+        await App.api.post("/api/channels", { name, platform, model_id: modelId, webhook_url, secret });
+        App.toast("频道已创建", "success");
+        document.getElementById("c-name").value = "";
+        document.getElementById("c-webhook").value = "";
+        document.getElementById("c-secret").value = "";
+        loadList();
+      } catch (err) { App.toast(err.message, "error"); }
+      finally { btn.disabled = false; btn.textContent = "创建频道"; }
+    };
+
+    window.copyWebhook = copyWebhook;
+    window.delChannel = delChannel;
+    window.loadList = loadList;
+
+    loadModels();
+    loadList();
+  </script>
+</body>
+</html>

@@ -1298,3 +1298,53 @@ h1, h2, h3, h4 {
   .db-kpi-row { grid-template-columns: 1fr; }
 }
 
+/* ==========================================================================
+   Markdown 渲染（聊天消息正文）
+   ========================================================================== */
+.md-body { font-size: 14.5px; line-height: 1.7; word-break: break-word; }
+.md-body > *:first-child { margin-top: 0; }
+.md-body > *:last-child { margin-bottom: 0; }
+.md-body p { margin: 0 0 10px; }
+.md-body h1, .md-body h2, .md-body h3, .md-body h4 {
+  margin: 16px 0 8px; font-weight: 600; line-height: 1.3;
+}
+.md-body h1 { font-size: 1.5em; }
+.md-body h2 { font-size: 1.3em; }
+.md-body h3 { font-size: 1.15em; }
+.md-body ul, .md-body ol { margin: 0 0 10px; padding-left: 24px; }
+.md-body li { margin: 3px 0; }
+.md-body code {
+  font-family: "SF Mono", "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 0.88em;
+  background: var(--bg-cream);
+  padding: 2px 5px;
+  border-radius: 4px;
+  color: var(--accent);
+}
+.md-body pre {
+  background: #1E1E1E; color: #D4D4D4;
+  padding: 14px 16px; border-radius: 8px;
+  overflow-x: auto; margin: 0 0 10px;
+  font-size: 13px; line-height: 1.6;
+}
+.md-body pre code {
+  background: transparent; color: inherit;
+  padding: 0; font-size: 13px; border-radius: 0;
+}
+.md-body blockquote {
+  margin: 0 0 10px; padding: 8px 14px;
+  border-left: 3px solid var(--accent);
+  background: var(--bg-cream); color: var(--text-secondary);
+  border-radius: 0 6px 6px 0;
+}
+.md-body a { color: var(--accent); text-decoration: underline; }
+.md-body table {
+  border-collapse: collapse; margin: 0 0 10px; font-size: 13.5px;
+}
+.md-body th, .md-body td {
+  border: 1px solid var(--border); padding: 6px 12px; text-align: left;
+}
+.md-body th { background: var(--bg-cream); font-weight: 600; }
+.md-body hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+.md-body img { max-width: 100%; border-radius: 6px; }
+

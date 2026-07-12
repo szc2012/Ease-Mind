@@ -6,6 +6,7 @@
   <title>在线对话 - EaseMind</title>
   <link rel="stylesheet" href="/assets/css/style.css">
   <link rel="icon" type="image/svg+xml" href="/assets/ease-mind-logo.svg">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
     .content { padding: 0; max-width: none; }
     .chat-session-item {
@@ -173,15 +174,26 @@
       `;
     }
 
+    function renderMarkdown(text) {
+      if (!text) return "";
+      if (typeof marked === "undefined") return App.escapeHtml(text);
+      try {
+        return marked.parse(text, { breaks: true, gfm: true });
+      } catch (e) {
+        return App.escapeHtml(text);
+      }
+    }
+
     function renderBubble(role, content) {
       const isUser = role === "user";
       const u = App.getUser(); const avatar = isUser ? (u?.username || "U").slice(0,1).toUpperCase() : "E";
+      const body = isUser ? App.escapeHtml(content) : renderMarkdown(content);
       return `
         <div class="chat-bubble ${role}">
           <div class="bubble-avatar">${avatar}</div>
           <div class="bubble-body">
             <div class="bubble-role">${isUser ? "你" : "EaseMind AI"}</div>
-            <div class="bubble-content">${App.escapeHtml(content)}</div>
+            <div class="bubble-content md-body">${body}</div>
           </div>
         </div>
       `;
@@ -224,23 +236,29 @@
 
       const bubbleContent = messagesEl.querySelector(`#${assistantId} .bubble-content`);
       let buffer = "";
+      let renderTimer = null;
 
       try {
         await App.streamSSEPost("/api/chat/send", { session_id: currentSessionId, content }, (msg) => {
           if (msg.type === "token") {
-            if (buffer === "") bubbleContent.textContent = "";
+            if (buffer === "") bubbleContent.innerHTML = "";
             buffer += msg.content;
-            bubbleContent.textContent = buffer;
-            messagesEl.scrollTop = messagesEl.scrollHeight;
+            if (renderTimer) clearTimeout(renderTimer);
+            renderTimer = setTimeout(() => {
+              bubbleContent.innerHTML = renderMarkdown(buffer);
+              messagesEl.scrollTop = messagesEl.scrollHeight;
+            }, 120);
           } else if (msg.type === "done") {
             buffer = msg.content || buffer;
-            bubbleContent.textContent = buffer;
+            if (renderTimer) { clearTimeout(renderTimer); renderTimer = null; }
+            bubbleContent.innerHTML = renderMarkdown(buffer);
           }
         });
         loadSessions();
       } catch (err) {
         bubbleContent.innerHTML = `<span style="color:var(--danger)">回复失败：${App.escapeHtml(err.message)}</span>`;
       } finally {
+        if (renderTimer) { clearTimeout(renderTimer); renderTimer = null; }
         sending = false;
         sendBtn.disabled = false; sendBtn.textContent = "发送";
       }

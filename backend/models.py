@@ -135,3 +135,18 @@ class ApiKey(Base):
     last_used_at = Column(DateTime, nullable=True)
     total_requests = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Channel(Base):
+    """频道：接入第三方聊天平台机器人（钉钉/飞书/企业微信/自定义）"""
+    __tablename__ = "channels"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    name = Column(String(128), nullable=False)
+    platform = Column(String(32), nullable=False)  # dingtalk / feishu / wecom / custom
+    model_id = Column(String(64), nullable=False)
+    webhook_url = Column(String(512), nullable=True)  # 备用：主动推送地址
+    secret = Column(String(256), nullable=True)  # 签名密钥（可选）
+    session_id = Column(String(64), nullable=True)  # 内部对话会话ID，维护多轮上下文
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

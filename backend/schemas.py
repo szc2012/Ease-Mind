@@ -222,3 +222,28 @@ class OpenAIChatRequest(BaseModel):
     stream: bool = False
     max_tokens: Optional[int] = 512
     temperature: Optional[float] = 0.7
+
+
+# ---- 频道（第三方聊天平台接入）----
+class ChannelCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    platform: str = "custom"  # dingtalk / feishu / wecom / custom
+    model_id: str
+    webhook_url: Optional[str] = None
+    secret: Optional[str] = None
+
+
+class ChannelOut(BaseModel):
+    id: str
+    name: str
+    platform: str
+    model_id: str
+    model_name: Optional[str] = None
+    webhook_url: Optional[str]
+    secret: Optional[str]
+    session_id: Optional[str]
+    is_active: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

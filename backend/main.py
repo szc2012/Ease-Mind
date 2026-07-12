@@ -22,6 +22,7 @@ from routers import training as training_router
 from routers import distillation as distillation_router
 from routers import chat as chat_router
 from routers import apikeys as apikeys_router
+from routers import channels as channels_router
 
 FRONTEND_DIR = BASE_DIR / "frontend"
 
@@ -76,6 +77,7 @@ app.include_router(training_router.router)
 app.include_router(distillation_router.router)
 app.include_router(chat_router.router)
 app.include_router(apikeys_router.router)
+app.include_router(channels_router.router)
 
 
 @app.get("/api/health")
