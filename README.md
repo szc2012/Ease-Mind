@@ -4,7 +4,7 @@
   <img src="frontend/assets/ease-mind-logo.svg" alt="EaseMind" width="360">
 </p>
 
-> 一个让每个人都能轻松训练、微调和使用 AI 模型的开源平台。白色 Anthropic 风格界面，从模型下载到对话端到端打通，无需 ML 经验。
+> 一个让每个人都能轻松训练、微调和使用 AI 模型的开源平台。从模型下载到对话端到端打通，无需 ML 经验。
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-green)
