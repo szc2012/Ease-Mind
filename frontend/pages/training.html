@@ -13,42 +13,59 @@
     if (!App.requireAdmin()) throw new Error("no access");
 
     App.renderShell("training", "模型训练", `
-      <div class="grid" style="grid-template-columns: 1fr 1fr; gap:18px">
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <div class="card-title">专业训练配置</div>
-              <div class="card-subtitle">自定义全部训练参数</div>
-            </div>
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">专业训练配置</div>
+            <div class="card-subtitle">自定义全部训练参数</div>
           </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">基础模型</label>
-              <select class="form-select" id="t-model"></select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">训练数据集（可多选）</label>
-              <div id="t-datasets" class="dataset-checklist"></div>
-            </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">基础模型</label>
+            <select class="form-select" id="t-model"></select>
           </div>
           <div class="form-group">
             <label class="form-label">任务名称</label>
             <input class="form-input" id="t-name" placeholder="例如：客服模型-专业训练">
           </div>
-          <div id="param-fields"></div>
-          <button class="btn btn-primary btn-lg btn-block" id="start-btn">开始专业训练</button>
+        </div>
+        <div class="form-group">
+          <label class="form-label">训练数据集（可多选）</label>
+          <div id="t-datasets" class="dataset-checklist"></div>
+        </div>
+        <div id="param-fields"></div>
+        <button class="btn btn-primary btn-lg btn-block" id="start-btn">开始专业训练</button>
+      </div>
+
+      <div class="card mt-3" id="progress-card" style="display:none">
+        <div class="card-header">
+          <div>
+            <div class="card-title">训练进度</div>
+            <div class="card-subtitle">实时 Loss 曲线与日志输出</div>
+          </div>
+          <div class="flex items-center gap-2">
+            <span id="t-status" class="badge badge-accent">运行中</span>
+            <span id="pct" class="text-muted text-sm">0%</span>
+          </div>
+        </div>
+        <div class="progress-bar mb-3"><div class="progress-fill" id="p-fill" style="width:0%"></div></div>
+
+        <div class="form-row mb-3" style="align-items:flex-end">
+          <div class="form-group" style="margin:0;flex:1">
+            <label class="form-label">Loss 曲线</label>
+            <div id="loss-chart" class="loss-chart" style="height:240px"></div>
+          </div>
+          <div style="text-align:right;min-width:140px">
+            <div class="text-xs text-muted">当前 Loss</div>
+            <div id="cur-loss" style="font-size:22px;font-weight:700;color:var(--accent);font-family:var(--font-serif)">-</div>
+            <div class="text-xs text-muted">采样点 <span id="loss-count">0</span></div>
+          </div>
         </div>
 
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <div class="card-title">训练日志</div>
-              <div class="card-subtitle">实时输出训练过程详情</div>
-            </div>
-          </div>
-          <div id="progress-area">
-            <div class="empty-state"><div class="empty-icon">✦</div><div class="empty-text">开始训练后将显示日志</div></div>
-          </div>
+        <div>
+          <label class="form-label">训练日志</label>
+          <div id="log-box" class="log-viewer" style="max-height:340px"></div>
         </div>
       </div>
 
@@ -65,6 +82,8 @@
     `);
 
     let paramConfig = {};
+    let lossVals = [];
+    let lossChartTimer = null;
 
     async function loadOptions() {
       try {
@@ -102,6 +121,63 @@
       } catch (err) { App.toast(err.message, "error"); }
     }
 
+    // 绘制 Loss 曲线（SVG 折线）
+    function drawLossChart() {
+      const el = document.getElementById("loss-chart");
+      if (!el) return;
+      if (lossVals.length === 0) {
+        el.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);font-size:13px">暂无 Loss 数据</div>`;
+        return;
+      }
+      const W = 800, H = 240, P = 40;
+      const maxL = Math.max(...lossVals, 0.1);
+      const minL = Math.min(...lossVals, 0);
+      const range = (maxL - minL) || 1;
+      const stepX = lossVals.length > 1 ? (W - 2 * P) / (lossVals.length - 1) : 0;
+      const pts = lossVals.map((l, i) => {
+        const x = P + i * stepX;
+        const y = H - P - ((l - minL) / range) * (H - 2 * P);
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join(" ");
+      const lastX = P + (lossVals.length - 1) * stepX;
+      const lastY = H - P - ((lossVals[lossVals.length - 1] - minL) / range) * (H - 2 * P);
+      const midY = H - P - (0.5) * (H - 2 * P);
+      const midVal = (maxL + minL) / 2;
+      el.innerHTML = `
+        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:100%">
+          <g class="grid-lines">
+            <line x1="${P}" y1="${P}" x2="${W - P}" y2="${P}" stroke="#E8E6DC" stroke-dasharray="3 3" stroke-width="1"/>
+            <line x1="${P}" y1="${midY}" x2="${W - P}" y2="${midY}" stroke="#E8E6DC" stroke-dasharray="3 3" stroke-width="1"/>
+            <line x1="${P}" y1="${H - P}" x2="${W - P}" y2="${H - P}" stroke="#E8E6DC" stroke-dasharray="3 3" stroke-width="1"/>
+          </g>
+          <line x1="${P}" y1="${P}" x2="${P}" y2="${H - P}" stroke="#D8D5C7" stroke-width="1"/>
+          <line x1="${P}" y1="${H - P}" x2="${W - P}" y2="${H - P}" stroke="#D8D5C7" stroke-width="1"/>
+          <g class="axis-labels">
+            <text x="${P - 6}" y="${P + 4}" text-anchor="end" fill="#b0ada3" font-size="9">${maxL.toFixed(3)}</text>
+            <text x="${P - 6}" y="${midY + 3}" text-anchor="end" fill="#b0ada3" font-size="9">${midVal.toFixed(3)}</text>
+            <text x="${P - 6}" y="${H - P + 3}" text-anchor="end" fill="#b0ada3" font-size="9">${minL.toFixed(3)}</text>
+          </g>
+          <polyline points="${pts}" fill="none" stroke="#CC785C" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+          <circle cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="3.5" fill="#CC785C" stroke="#fff" stroke-width="1.5"/>
+        </svg>
+      `;
+    }
+
+    function appendLoss(value) {
+      if (typeof value !== "number" || isNaN(value)) return;
+      lossVals.push(value);
+      const curEl = document.getElementById("cur-loss");
+      const cntEl = document.getElementById("loss-count");
+      if (curEl) curEl.textContent = value.toFixed(4);
+      if (cntEl) cntEl.textContent = lossVals.length;
+      // 节流重绘：最多每 300ms 一次
+      if (lossChartTimer) return;
+      lossChartTimer = setTimeout(() => {
+        drawLossChart();
+        lossChartTimer = null;
+      }, 300);
+    }
+
     document.getElementById("start-btn").onclick = async () => {
       const modelId = document.getElementById("t-model").value;
       const datasetIds = Array.from(document.querySelectorAll('#t-datasets input[type="checkbox"]:checked')).map(cb => cb.value);
@@ -127,31 +203,36 @@
     };
 
     function startStreaming(taskId) {
-      const area = document.getElementById("progress-area");
-      area.innerHTML = `
-        <div class="flex items-center justify-between mb-2">
-          <div><strong>训练进度</strong> <span id="pct">0%</span></div>
-          <span id="t-status" class="badge badge-accent">运行中</span>
-        </div>
-        <div class="progress-bar mb-3"><div class="progress-fill" id="p-fill" style="width:0%"></div></div>
-        <div class="log-viewer" id="log-box" style="max-height:380px"></div>
-      `;
+      // 显示进度卡片
+      const card = document.getElementById("progress-card");
+      card.style.display = "";
+      // 重置 loss
+      lossVals = [];
+      if (lossChartTimer) { clearTimeout(lossChartTimer); lossChartTimer = null; }
+      drawLossChart();
+      document.getElementById("cur-loss").textContent = "-";
+      document.getElementById("loss-count").textContent = "0";
+
       const logBox = document.getElementById("log-box");
       const pFill = document.getElementById("p-fill");
       const pct = document.getElementById("pct");
       const tStatus = document.getElementById("t-status");
+      logBox.innerHTML = "";
 
       App.streamSSE(`/api/training/${taskId}/log/stream`, (msg) => {
         if (msg.type === "log") {
           const line = document.createElement("div");
           line.className = "log-line";
-          const txt = msg.content;
+          const txt = msg.content || "";
           if (txt.includes("错误") || txt.includes("失败")) line.classList.add("error");
           else if (txt.includes("完成") || txt.includes("✓") || txt.includes("训练完成")) line.classList.add("success");
           else if (txt.includes("阶段") || txt.includes("----") || txt.includes("Epoch")) line.classList.add("info");
           line.textContent = txt;
           logBox.appendChild(line);
           logBox.scrollTop = logBox.scrollHeight;
+          // 解析 loss
+          const m = txt.match(/loss[=: ]+([0-9]+\.?[0-9]*)/i);
+          if (m) appendLoss(parseFloat(m[1]));
         } else if (msg.type === "status") {
           pFill.style.width = msg.progress + "%";
           pct.textContent = msg.progress.toFixed(1) + "%";
@@ -159,6 +240,9 @@
           if (msg.status === "failed") { tStatus.className = "badge badge-danger"; tStatus.textContent = "失败"; }
         } else if (msg.type === "done") {
           App.toast("训练完成！", "success");
+          // 收尾绘制
+          if (lossChartTimer) { clearTimeout(lossChartTimer); lossChartTimer = null; }
+          drawLossChart();
           loadHistory();
         }
       }).catch(err => App.toast(err.message, "error"));

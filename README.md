@@ -1,7 +1,7 @@
 # EaseMind — 零门槛 AI 训练与微调平台
 
 <p align="center">
-  <img src="Ease-Mind.svg" alt="EaseMind" width="400">
+  <img src="frontend/assets/ease-mind-logo.svg" alt="EaseMind" width="360">
 </p>
 
 > 一个让每个人都能轻松训练、微调和使用 AI 模型的开源平台。白色 Anthropic 风格界面，从模型下载到对话端到端打通，无需 ML 经验。
@@ -9,9 +9,6 @@
 ![Python](https://img.shields.io/badge/Python-3.10+-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-green)
 ![License](https://img.shields.io/badge/License-MIT-orange)
-
-# 详细说明书：下载https://songzichen.lanzoue.com/iEf323v6p79c
-<img width="852" height="1210" alt="b8f3d664-9e13-476e-a5d9-db0244896970" src="https://github.com/user-attachments/assets/d2746729-583b-4702-878b-7b57a8dff1b5" />
 
 ## ✨ 特性
 
@@ -22,14 +19,15 @@
 - ✏️ **模型重命名**：支持修改本地模型显示名称，便于管理
 - 🔑 **API Key 管理**：生成 OpenAI 兼容密钥，供第三方客户端调用
 - 📥 **模型自动下载**：输入魔搭社区模型名，自动下载到本地
-- 📄 **多格式数据集**：支持 `docx` / `txt` / `md` / `csv` 文件，以及网页 URL 抓取
+- 📄 **多格式数据集**：支持 `docx` / `txt` / `md` / `csv` / `json` / `jsonl` 文件，以及网页 URL 抓取
 - 📚 **多数据集训练**：单次训练可勾选多个数据集，文本自动拼接
 - 🔄 **微调模型再训练**：微调/蒸馏产出的模型可作为基础模型再次微调或蒸馏
-- 💬 **真实推理对话**：基于本地模型流式生成，支持多轮上下文与会话管理
+- 💬 **真实推理对话**：基于本地模型流式生成，支持多轮上下文、会话管理与 Markdown 渲染
+- 📡 **频道接入**：一键接入钉钉、飞书、企业微信与通用 Webhook，把模型变成群机器人
 - 📊 **实时训练日志**：流式推送 loss、进度、epoch 等详细训练信息
 - 🗑️ **彻底删除**：删除模型时自动清理本地文件，释放磁盘空间
-- 👥 **角色权限**：管理员可训练/蒸馏/管理，普通用户可对话
-- 🎨 **优雅界面**：白色主题，参考 Anthropic 设计风格
+- 👥 **角色权限**：管理员可训练/蒸馏/管理/频道，普通用户可对话
+- 🎨 **优雅界面**：白色主题，SVG 矢量 Logo，参考 Anthropic 设计风格
 
 ## 🚀 快速开始
 
@@ -121,6 +119,7 @@ Ease-Mind/
 │   │   ├── datasets.py        # 数据集
 │   │   ├── training.py        # 训练任务
 │   │   ├── distillation.py    # 模型蒸馏
+│   │   ├── channels.py        # 频道接入（钉钉/飞书/企微/Webhook）
 │   │   ├── apikeys.py         # API Key 管理
 │   │   └── chat.py            # 对话
 │   ├── services/              # 业务服务
@@ -143,6 +142,7 @@ Ease-Mind/
 │       ├── training.html              # 专业训练
 │       ├── finetune.html              # 傻瓜微调
 │       ├── distillation.html          # 模型蒸馏
+│       ├── channels.html              # 频道接入
 │       ├── apikeys.html               # API 密钥
 │       └── chat.html                  # 在线对话
 ├── img/                        # 项目截图
@@ -236,8 +236,13 @@ Ease-Mind/
 
 ![API 密钥管理界面](img/API密钥管理界面.jpeg)
 
+### 频道接入
+将本地模型一键接入钉钉、飞书、企业微信或通用 Webhook，生成独立 webhook 地址，支持多轮上下文与平台签名验证。
+
+![频道接入界面](img/频道接入界面.jpeg)
+
 ### 在线对话
-基于本地模型真实推理，支持多轮上下文、多会话管理与删除。
+基于本地模型真实推理，支持多轮上下文、多会话管理与删除；助手消息支持 Markdown 渲染（代码块、列表、表格、引用等）。
 
 ![在线对话界面](img/在线对话界面.jpeg)
 
@@ -275,14 +280,23 @@ python main.py
 
 数据集质量直接决定微调效果。推荐准备一份 **问答对** 或 **连续指令遵循文本**。
 
-#### 格式示例（txt / md）
+#### 格式示例（txt / md / json / jsonl）
+
+**txt / md**
 
 ```text
 问题：EaseMind 是什么？
 回答：EaseMind 是一个零门槛 AI 训练与微调平台，支持模型下载、LoRA 微调、数据集管理和在线对话。
 
 问题：EaseMind 支持哪些数据格式？
-回答：支持 docx、txt、md、csv 文件，也支持直接填写网页 URL 抓取内容。
+回答：支持 docx、txt、md、csv、json、jsonl 文件，也支持直接填写网页 URL 抓取内容。
+```
+
+**json / jsonl**
+
+```json
+{"text": "问题：EaseMind 是什么？\n回答：EaseMind 是一个零门槛 AI 训练与微调平台。"}
+{"text": "问题：EaseMind 支持哪些数据格式？\n回答：支持 docx、txt、md、csv、json、jsonl 文件。"}
 ```
 
 #### 数据准备建议
@@ -297,7 +311,7 @@ python main.py
 #### 上传数据集
 
 1. 点击「数据集」菜单。
-2. 选择文件或直接粘贴网页地址（如公司官网产品介绍页）。
+2. 选择文件（支持 docx / txt / md / csv / json / jsonl）或直接粘贴网页地址（如公司官网产品介绍页）。
 3. 填写数据集名称，点击「上传」。
 4. 上传成功后可在列表看到样本数量。
 
@@ -390,7 +404,15 @@ Loss 持续下降通常说明训练正常。如果 Loss 不下降或变成 `nan`
 4. 如果不满意，可回到训练流程调整数据或参数重新训练。
 5. 训练好的模型还可作为基础模型再次微调或蒸馏，逐步迭代提升。
 
-### 第七步：获取 API Key（可选）
+### 第七步：接入第三方聊天平台（可选）
+
+1. 进入「频道接入」页面。
+2. 填写频道名称、选择平台（钉钉 / 飞书 / 企业微信 / 通用）。
+3. 选择要绑定的模型，配置 webhook 推送地址与签名密钥（如需）。
+4. 点击「创建频道」，复制生成的 webhook 地址。
+5. 在对应聊天平台配置机器人 webhook，即可在群内 @机器人对话。
+
+### 第八步：获取 API Key（可选）
 
 1. 进入「API 密钥」页面。
 2. 填写密钥名称，选择要绑定的模型（可选）。
@@ -492,6 +514,12 @@ GET    /api/distillation            # 蒸馏任务列表
 GET    /api/distillation/{id}/loss  # 获取蒸馏 loss 数据
 GET    /api/distillation/{id}/log/stream # SSE 蒸馏日志流
 
+# 频道接入（管理员）
+GET    /api/channels                # 频道列表
+POST   /api/channels                # 创建频道
+DELETE /api/channels/{id}           # 删除频道
+POST   /api/channels/{id}/webhook   # 接收平台消息推送
+
 # API Key
 GET    /api/apikeys                 # 列出当前用户密钥
 POST   /api/apikeys                 # 创建新密钥
@@ -566,6 +594,15 @@ MODEL_DOWNLOAD_MODE = "mock"
 - 确保训练任务已经开始并有 loss 数据输出
 - 曲线每 3 秒自动刷新一次
 - 蒸馏任务会同时显示 total / distill / ce 三条曲线
+
+### Q：聊天中的 Markdown 怎么渲染？
+- 助手消息会自动使用 marked.js 渲染为 HTML，支持代码块、列表、表格、引用、链接等
+- 用户消息仍按纯文本显示，防止 XSS
+
+### Q：频道接入后没有收到回复？
+- 确认聊天平台 webhook 地址配置正确
+- 检查频道是否设置了签名密钥，需与平台配置一致
+- 查看后端日志确认请求已到达 `/api/channels/{id}/webhook`
 
 ## 📝 License
 

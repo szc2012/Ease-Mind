@@ -163,6 +163,7 @@ def _run_real_distillation(task_id: str) -> None:
         write_log(task_id, f"温度 T={temperature}, alpha={alpha}, epochs={epochs}, batch={batch_size}, lr={lr}")
 
         device = _get_device()
+        import torch
         dtype = torch.float16 if device != "cpu" else torch.float32
         write_log(task_id, f"设备：{device}, dtype：{dtype}")
 
