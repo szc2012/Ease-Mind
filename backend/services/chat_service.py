@@ -63,7 +63,7 @@ def _load_model(model_path: str):
 
         model = AutoModelForCausalLM.from_pretrained(
             model_path,
-            dtype=dtype,
+            torch_dtype=dtype,
             trust_remote_code=True,
             low_cpu_mem_usage=True,
         )
@@ -133,7 +133,6 @@ def generate_reply_stream(user_message: str, history: list, model_path: str):
         repetition_penalty=1.05,
         pad_token_id=tokenizer.eos_token_id,
         streamer=streamer,
-        use_cache=False,
     )
 
     # 在线程中跑生成，主线程读取流

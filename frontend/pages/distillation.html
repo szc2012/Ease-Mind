@@ -101,8 +101,8 @@
     async function loadParams() {
       try {
         const data = await App.api.get("/api/distillation/params");
-        paramConfig = data.data.params_config;
-        const defaults = data.data.defaults;
+        paramConfig = data?.data?.params_config || {};
+        const defaults = data?.data?.defaults || {};
         const el = document.getElementById("param-fields");
         el.innerHTML = Object.entries(paramConfig).map(([key, cfg]) => `
           <div class="form-group">
@@ -175,7 +175,7 @@
         if (msg.type === "log") {
           const line = document.createElement("div");
           line.className = "log-line";
-          const txt = msg.content;
+          const txt = msg.content || "";
           if (txt.includes("错误") || txt.includes("失败")) line.classList.add("error");
           else if (txt.includes("完成") || txt.includes("✓") || txt.includes("蒸馏任务完成")) line.classList.add("success");
           else if (txt.includes("阶段") || txt.includes("----") || txt.includes("Epoch")) line.classList.add("info");
@@ -183,17 +183,22 @@
           logBox.appendChild(line);
           logBox.scrollTop = logBox.scrollHeight;
         } else if (msg.type === "status") {
-          pFill.style.width = msg.progress + "%";
-          pct.textContent = msg.progress.toFixed(1) + "%";
+          const p = msg.progress ?? 0;
+          pFill.style.width = p + "%";
+          pct.textContent = p.toFixed(1) + "%";
           if (msg.status === "completed") { tStatus.className = "badge badge-success"; tStatus.textContent = "已完成"; }
           if (msg.status === "failed") { tStatus.className = "badge badge-danger"; tStatus.textContent = "失败"; }
         } else if (msg.type === "done") {
           App.toast("蒸馏完成！", "success");
-          clearInterval(lossTimer);
+          clearInterval(lossTimer); lossTimer = null;
           refreshLoss();
           loadHistory();
         }
-      }).catch(err => App.toast(err.message, "error"));
+      }).catch(err => {
+        App.toast(err.message, "error");
+        if (lossTimer) { clearInterval(lossTimer); lossTimer = null; }
+        tStatus.className = "badge badge-danger"; tStatus.textContent = "连接中断";
+      });
     }
 
     async function loadHistory() {
@@ -208,7 +213,7 @@
           <div class="list-item">
             <div class="list-item-main">
               <div class="list-item-title">${App.escapeHtml(t.name)} <span class="tag">蒸馏</span></div>
-              <div class="list-item-sub">${App.formatTime(t.created_at)} · 进度 ${t.progress.toFixed(0)}%</div>
+              <div class="list-item-sub">${App.formatTime(t.created_at)} · 进度 ${(t.progress ?? 0).toFixed(0)}%</div>
             </div>
             <div class="flex items-center gap-1">
               ${App.statusBadge(t.status)}

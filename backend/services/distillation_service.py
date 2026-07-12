@@ -85,7 +85,7 @@ def _load_model(model_path: str, device: str, dtype):
         tok.pad_token = tok.eos_token
     model = AutoModelForCausalLM.from_pretrained(
         model_path,
-        dtype=dtype,
+        torch_dtype=dtype,
         trust_remote_code=True,
         low_cpu_mem_usage=True,
     )
@@ -395,16 +395,22 @@ def _run_real_distillation(task_id: str) -> None:
         write_log(task_id, f"输出模型：{result_model.name}")
         write_log(task_id, "=" * 60)
     except Exception as e:
-        db.rollback()
-        tb = traceback.format_exc()
-        write_log(task_id, "[错误] 蒸馏失败：" + str(e))
-        write_log(task_id, "详细堆栈：\n" + tb)
-        task = db.query(DistillationTask).filter(DistillationTask.id == task_id).first()
-        if task:
-            task.status = "failed"
-            task.error_message = str(e)
-            task.finished_at = datetime.utcnow()
-            db.commit()
+        try:
+            db.rollback()
+            tb = traceback.format_exc()
+            try:
+                write_log(task_id, "[错误] 蒸馏失败：" + str(e))
+                write_log(task_id, "详细堆栈：\n" + tb)
+            except Exception:
+                pass
+            task = db.query(DistillationTask).filter(DistillationTask.id == task_id).first()
+            if task:
+                task.status = "failed"
+                task.error_message = str(e)
+                task.finished_at = datetime.utcnow()
+                db.commit()
+        except Exception:
+            pass
     finally:
         db.close()
 
@@ -500,12 +506,17 @@ def _run_mock_distillation(task_id: str) -> None:
         write_log(task_id, "蒸馏完成！")
         write_log(task_id, "=" * 60)
     except Exception as e:
-        write_log(task_id, "[错误] " + str(e))
-        task = db.query(DistillationTask).filter(DistillationTask.id == task_id).first()
-        if task:
-            task.status = "failed"
-            task.error_message = str(e)
-            db.commit()
+        try:
+            db.rollback()
+            write_log(task_id, "[错误] " + str(e))
+            task = db.query(DistillationTask).filter(DistillationTask.id == task_id).first()
+            if task:
+                task.status = "failed"
+                task.error_message = str(e)
+                task.finished_at = datetime.utcnow()
+                db.commit()
+        except Exception:
+            pass
     finally:
         db.close()
 

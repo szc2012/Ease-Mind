@@ -155,7 +155,7 @@ def _run_real_training(task_id: str) -> None:
         write_log(task_id, "  加载基础模型...")
         model = AutoModelForCausalLM.from_pretrained(
             model_path,
-            dtype=dtype,
+            torch_dtype=dtype,
             trust_remote_code=True,
             low_cpu_mem_usage=True,
         )
@@ -369,16 +369,22 @@ def _run_real_training(task_id: str) -> None:
         write_log(task_id, f"本地路径：{save_path}")
         write_log(task_id, "=" * 60)
     except Exception as e:
-        db.rollback()
-        tb = traceback.format_exc()
-        write_log(task_id, "[错误] 训练失败：" + str(e))
-        write_log(task_id, "详细堆栈：\n" + tb)
-        task = db.query(TrainingTask).filter(TrainingTask.id == task_id).first()
-        if task:
-            task.status = "failed"
-            task.error_message = str(e)
-            task.finished_at = datetime.utcnow()
-            db.commit()
+        try:
+            db.rollback()
+            tb = traceback.format_exc()
+            try:
+                write_log(task_id, "[错误] 训练失败：" + str(e))
+                write_log(task_id, "详细堆栈：\n" + tb)
+            except Exception:
+                pass
+            task = db.query(TrainingTask).filter(TrainingTask.id == task_id).first()
+            if task:
+                task.status = "failed"
+                task.error_message = str(e)
+                task.finished_at = datetime.utcnow()
+                db.commit()
+        except Exception:
+            pass
     finally:
         db.close()
 
@@ -472,12 +478,17 @@ def _run_mock_training(task_id: str) -> None:
         write_log(task_id, "训练完成！")
         write_log(task_id, "=" * 60)
     except Exception as e:
-        write_log(task_id, "[错误] " + str(e))
-        task = db.query(TrainingTask).filter(TrainingTask.id == task_id).first()
-        if task:
-            task.status = "failed"
-            task.error_message = str(e)
-            db.commit()
+        try:
+            db.rollback()
+            write_log(task_id, "[错误] " + str(e))
+            task = db.query(TrainingTask).filter(TrainingTask.id == task_id).first()
+            if task:
+                task.status = "failed"
+                task.error_message = str(e)
+                task.finished_at = datetime.utcnow()
+                db.commit()
+        except Exception:
+            pass
     finally:
         db.close()
 

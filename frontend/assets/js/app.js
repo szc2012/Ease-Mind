@@ -264,6 +264,20 @@ const App = (() => {
     }[c]));
   }
 
+  // 转义用于 HTML 事件属性（如 onclick="fn('...')"）内 JS 字符串字面量的值
+  // 同时处理 HTML 属性上下文（" 分隔）和 JS 字符串上下文（' 分隔）
+  function escapeJsAttr(s) {
+    if (s == null) return "";
+    return String(s)
+      .replace(/\\/g, "\\\\")
+      .replace(/'/g, "\\'")
+      .replace(/"/g, "&quot;")
+      .replace(/\n/g, "\\n")
+      .replace(/\r/g, "\\r")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
   function formatTime(s) {
     if (!s) return "-";
     const d = new Date(s);
@@ -423,7 +437,7 @@ const App = (() => {
     getToken, getUser, setToken, setUser, clearAuth,
     api, requireAuth, requireAdmin, redirectLogin, redirectHome,
     toast, modal, renderShell, buildSidebar, buildTopbar,
-    escapeHtml, formatTime, statusBadge, logout,
+    escapeHtml, escapeJsAttr, formatTime, statusBadge, logout,
     streamSSE, streamSSEPost, drawLossChart,
   };
 })();

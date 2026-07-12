@@ -41,7 +41,7 @@ def init_db():
             )
             db.add(admin)
             db.commit()
-            print(f"[初始化] 已创建默认管理员：{settings.ADMIN_USERNAME}/{settings.ADMIN_PASSWORD}")
+            print(f"[初始化] 已创建默认管理员：{settings.ADMIN_USERNAME}（请通过环境变量修改默认密码）")
     finally:
         db.close()
 
@@ -54,15 +54,20 @@ async def lifespan(app):
 
 app = FastAPI(
     title=settings.APP_NAME,
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url="/docs" if settings.DEBUG else None,
+    redoc_url="/redoc" if settings.DEBUG else None,
     lifespan=lifespan,
 )
 
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -96,7 +101,13 @@ def index():
 
 @app.get("/pages/{page_name}", response_class=HTMLResponse)
 def pages(page_name: str):
-    p = FRONTEND_DIR / "pages" / page_name
+    # 防止路径遍历：解析后必须仍在 pages 目录内
+    pages_dir = (FRONTEND_DIR / "pages").resolve()
+    p = (pages_dir / page_name).resolve()
+    try:
+        p.relative_to(pages_dir)
+    except ValueError:
+        return JSONResponse(status_code=403, content={"detail": "非法路径"})
     if not p.exists() or not p.is_file():
         return JSONResponse(status_code=404, content={"detail": "页面不存在"})
     return FileResponse(str(p))

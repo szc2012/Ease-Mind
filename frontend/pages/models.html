@@ -91,8 +91,8 @@
               ${App.statusBadge(m.status)}
               ${m.status === "downloading" || m.status === "pending" ? `<button class="btn btn-ghost btn-sm" onclick="viewLog('${m.id}')">查看日志</button>` : ""}
               ${m.status === "ready" && !m.is_active ? `<button class="btn btn-secondary btn-sm" onclick="setActive('${m.id}')">设为默认</button>` : ""}
-              <button class="btn btn-ghost btn-sm" onclick="renameModel('${m.id}','${App.escapeHtml(m.name)}')">重命名</button>
-              <button class="btn btn-danger btn-sm" onclick="delModel('${m.id}','${App.escapeHtml(m.name)}')">删除</button>
+              <button class="btn btn-ghost btn-sm" onclick="renameModel('${m.id}','${App.escapeJsAttr(m.name)}')">重命名</button>
+              <button class="btn btn-danger btn-sm" onclick="delModel('${m.id}','${App.escapeJsAttr(m.name)}')">删除</button>
             </div>
           </div>
         `).join("");
@@ -106,7 +106,7 @@
         const data = await App.api.get(`/api/models/${id}/log`);
         const pre = document.createElement("pre");
         pre.className = "log-viewer";
-        pre.textContent = data.data.log || "（暂无日志）";
+        pre.textContent = data?.data?.log || "（暂无日志）";
         App.modal({ title: "下载日志", body: pre });
       } catch (err) { App.toast(err.message, "error"); }
     }

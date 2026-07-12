@@ -150,7 +150,7 @@ print(response.choices[0].message.content)</pre>
                 ${k.last_used_at ? ' · 最近使用 ' + App.formatTime(k.last_used_at) : ' · 未使用'}
               </div>
             </div>
-            <button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="deleteKey('${k.id}','${App.escapeHtml(k.name)}')">删除</button>
+            <button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="deleteKey('${k.id}','${App.escapeJsAttr(k.name)}')">删除</button>
           </div>
         `).join("");
       } catch (err) { App.toast(err.message, "error"); }

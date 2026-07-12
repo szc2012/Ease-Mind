@@ -68,6 +68,13 @@ def _download_real(model_id: str, model_repo: str) -> None:
     _set_status(model_id, "downloading")
     _log(model_id, "已检测到 modelscope SDK，开始真实下载...")
 
+    # 校验 model_repo 格式，防止路径异常
+    import re
+    if not re.match(r"^[a-zA-Z0-9_.\-]+/[a-zA-Z0-9_.\-]+$", model_repo):
+        _set_status(model_id, "failed", description=f"模型 ID 格式非法：{model_repo}")
+        _log(model_id, f"[错误] 模型 ID 格式非法：{model_repo}（应为 org/name 格式）")
+        return
+
     # 明确目标目录：MODEL_DIR / 模型名(转下划线)
     target_name = model_repo.replace("/", "_")
     target_dir = MODEL_DIR / target_name

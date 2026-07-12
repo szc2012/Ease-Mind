@@ -100,13 +100,13 @@ async def send_message(
     model_name = model.name
     model_path = model.local_path  # 真实推理的关键：本地路径
 
+    # 先取历史（在保存当前用户消息之前，避免 autoflush 导致重复）
+    history = db.query(ChatMessage).filter(ChatMessage.session_id == session_id).order_by(ChatMessage.created_at.asc()).all()
+    history_texts = [m.content for m in history]
+
     # 保存用户消息
     user_msg = ChatMessage(session_id=session_id, role="user", content=payload.content)
     db.add(user_msg)
-
-    # 取历史
-    history = db.query(ChatMessage).filter(ChatMessage.session_id == session_id).order_by(ChatMessage.created_at.asc()).all()
-    history_texts = [m.content for m in history]
     db.commit()
 
     user_content = payload.content
@@ -114,8 +114,8 @@ async def send_message(
     async def event_gen():
         # 先推送用户消息确认
         yield f"data: {json.dumps({'type': 'user_message', 'content': user_content})}\n\n"
-        # 推送"加载中"提示（首次加载模型可能较慢）
-        yield f"data: {json.dumps({'type': 'token', 'content': '（正在加载模型，请稍候...）'})}\n\n"
+        # 推送"加载中"提示（首次加载模型可能较慢，用 hint 类型，前端可忽略）
+        yield f"data: {json.dumps({'type': 'hint', 'content': '（正在加载模型，请稍候...）'})}\n\n"
         reply_buffer = ""
         try:
             for chunk in stream_reply(user_content, history_texts, model_path):
@@ -129,9 +129,7 @@ async def send_message(
         # 保存助手回复（使用独立 session）
         db2 = SessionLocal()
         try:
-            # 去掉"加载中"提示
-            clean_reply = reply_buffer.replace("（正在加载模型，请稍候...）", "", 1)
-            assistant_msg = ChatMessage(session_id=session_id, role="assistant", content=clean_reply)
+            assistant_msg = ChatMessage(session_id=session_id, role="assistant", content=reply_buffer)
             db2.add(assistant_msg)
             db2.commit()
         finally:

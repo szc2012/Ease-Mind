@@ -185,8 +185,11 @@
 
       const draw = (points) => {
         if (!points || points.length === 0) return { lineD: "", areaD: "" };
-        const steps = points.map(p => p.step || p.global_step || 0);
-        const losses = points.map(p => p.loss);
+        // 过滤掉 loss 为 null/undefined 的点，防止 NaN 污染曲线
+        const valid = points.filter(p => p.loss != null && !isNaN(p.loss));
+        if (valid.length === 0) return { lineD: "", areaD: "" };
+        const steps = valid.map(p => p.step || p.global_step || 0);
+        const losses = valid.map(p => p.loss);
         const minStep = Math.min(...steps);
         const maxStep = Math.max(...steps);
         const minLoss = Math.min(...losses);
@@ -198,7 +201,7 @@
         const width = 640 - padLeft - padRight;
         const height = 160 - padTop - padBottom;
 
-        const pts = points.map(p => {
+        const pts = valid.map(p => {
           const x = padLeft + ((p.step - minStep) / rangeStep) * width;
           const y = padTop + (1 - (p.loss - minLoss) / rangeLoss) * height;
           return [x, y];
@@ -330,7 +333,8 @@
         }
 
         statusEl.textContent = target.status === "running" ? "Streaming" : target.status;
-        statusEl.className = target.status === "running" ? "badge badge-accent" : (App.statusBadge(target.status).match(/class="([^"]+)"/)[1]);
+        const badgeMatch = App.statusBadge(target.status).match(/class="([^"]+)"/);
+        statusEl.className = target.status === "running" ? "badge badge-accent" : (badgeMatch ? badgeMatch[1] : "badge badge-neutral");
         subEl.textContent = target.status === "running" ? "实时" : "最近";
 
         const type = "dataset_ids" in target ? "training" : "distillation";

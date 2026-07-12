@@ -53,7 +53,7 @@ def get_current_user(
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         user_id = payload.get("sub")
-        if user_id is None:
+        if user_id is None or not isinstance(user_id, str):
             raise cred_exc
     except JWTError:
         raise cred_exc

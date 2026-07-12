@@ -156,7 +156,7 @@
         if (msg.type === "log") {
           const line = document.createElement("div");
           line.className = "log-line";
-          const txt = msg.content;
+          const txt = msg.content || "";
           if (txt.includes("错误") || txt.includes("失败")) line.classList.add("error");
           else if (txt.includes("完成") || txt.includes("✓")) line.classList.add("success");
           else if (txt.includes("阶段") || txt.includes("----")) line.classList.add("info");
@@ -164,16 +164,21 @@
           logBox.appendChild(line);
           logBox.scrollTop = logBox.scrollHeight;
         } else if (msg.type === "status") {
-          pFill.style.width = msg.progress + "%";
-          pct.textContent = msg.progress.toFixed(1) + "%";
+          const p = msg.progress ?? 0;
+          pFill.style.width = p + "%";
+          pct.textContent = p.toFixed(1) + "%";
           if (msg.status === "completed") { tStatus.className = "badge badge-success"; tStatus.textContent = "已完成"; }
           if (msg.status === "failed") { tStatus.className = "badge badge-danger"; tStatus.textContent = "失败"; }
         } else if (msg.type === "done") {
           App.toast("训练完成！", "success");
-          clearInterval(lossTimer);
+          clearInterval(lossTimer); lossTimer = null;
           refreshLoss(); // 最终刷新一次
         }
-      }).catch(err => App.toast(err.message, "error"));
+      }).catch(err => {
+        App.toast(err.message, "error");
+        if (lossTimer) { clearInterval(lossTimer); lossTimer = null; }
+        tStatus.className = "badge badge-danger"; tStatus.textContent = "连接中断";
+      });
     }
 
     loadOptions();

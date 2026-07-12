@@ -234,8 +234,9 @@
           const m = txt.match(/loss[=: ]+([0-9]+\.?[0-9]*)/i);
           if (m) appendLoss(parseFloat(m[1]));
         } else if (msg.type === "status") {
-          pFill.style.width = msg.progress + "%";
-          pct.textContent = msg.progress.toFixed(1) + "%";
+          const p = msg.progress ?? 0;
+          pFill.style.width = p + "%";
+          pct.textContent = p.toFixed(1) + "%";
           if (msg.status === "completed") { tStatus.className = "badge badge-success"; tStatus.textContent = "已完成"; }
           if (msg.status === "failed") { tStatus.className = "badge badge-danger"; tStatus.textContent = "失败"; }
         } else if (msg.type === "done") {
@@ -245,7 +246,12 @@
           drawLossChart();
           loadHistory();
         }
-      }).catch(err => App.toast(err.message, "error"));
+      }).catch(err => {
+        App.toast(err.message, "error");
+        // SSE 失败时清理定时器并标记状态
+        if (lossChartTimer) { clearTimeout(lossChartTimer); lossChartTimer = null; }
+        tStatus.className = "badge badge-danger"; tStatus.textContent = "连接中断";
+      });
     }
 
     async function loadHistory() {
@@ -260,7 +266,7 @@
           <div class="list-item">
             <div class="list-item-main">
               <div class="list-item-title">${App.escapeHtml(t.name)} <span class="tag">${t.mode === "simple" ? "傻瓜" : "专业"}</span></div>
-              <div class="list-item-sub">${App.formatTime(t.created_at)} · 进度 ${t.progress.toFixed(0)}%</div>
+              <div class="list-item-sub">${App.formatTime(t.created_at)} · 进度 ${(t.progress ?? 0).toFixed(0)}%</div>
             </div>
             <div class="flex items-center gap-1">
               ${App.statusBadge(t.status)}

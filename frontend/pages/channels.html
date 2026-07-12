@@ -99,7 +99,7 @@
                 </div>
                 <div class="flex items-center gap-1">
                   <button class="btn btn-ghost btn-sm" onclick="copyWebhook('${webhook}')">复制地址</button>
-                  <button class="btn btn-danger btn-sm" onclick="delChannel('${c.id}','${App.escapeHtml(c.name)}')">删除</button>
+                  <button class="btn btn-danger btn-sm" onclick="delChannel('${c.id}','${App.escapeJsAttr(c.name)}')">删除</button>
                 </div>
               </div>
               <div class="form-input" style="font-family:monospace;font-size:12px;color:var(--text-secondary);user-select:all">${App.escapeHtml(webhook)}</div>

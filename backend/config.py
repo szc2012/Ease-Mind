@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8080
 
+    # 调试模式：开启后暴露 /docs，关闭则隐藏 API 文档
+    DEBUG: bool = True
+
     class Config:
         env_file = ".env"
 

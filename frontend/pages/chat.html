@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/assets/css/style.css">
   <link rel="icon" type="image/svg+xml" href="/assets/ease-mind-logo.svg">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
   <style>
     .content { padding: 0; max-width: none; }
     .chat-session-item {
@@ -116,9 +117,9 @@
           return;
         }
         el.innerHTML = list.map(s => `
-          <div class="chat-session-item ${s.id === currentSessionId ? "active" : ""}" onclick="selectSession('${s.id}','${App.escapeHtml(s.title)}')">
+          <div class="chat-session-item ${s.id === currentSessionId ? "active" : ""}" onclick="selectSession('${s.id}','${App.escapeJsAttr(s.title)}')">
             <span class="session-title">${App.escapeHtml(s.title)}</span>
-            <button class="session-del-btn" title="删除对话" onclick="event.stopPropagation(); deleteSession('${s.id}','${App.escapeHtml(s.title)}')">×</button>
+            <button class="session-del-btn" title="删除对话" onclick="event.stopPropagation(); deleteSession('${s.id}','${App.escapeJsAttr(s.title)}')">×</button>
           </div>
         `).join("");
       } catch (err) { App.toast(err.message, "error"); }
@@ -178,7 +179,12 @@
       if (!text) return "";
       if (typeof marked === "undefined") return App.escapeHtml(text);
       try {
-        return marked.parse(text, { breaks: true, gfm: true });
+        const raw = marked.parse(text, { breaks: true, gfm: true });
+        // 用 DOMPurify 消毒，防止模型输出注入恶意 HTML/JS
+        if (typeof DOMPurify !== "undefined") {
+          return DOMPurify.sanitize(raw, { ADD_ATTR: ["target", "rel"] });
+        }
+        return raw;
       } catch (e) {
         return App.escapeHtml(text);
       }
@@ -240,7 +246,10 @@
 
       try {
         await App.streamSSEPost("/api/chat/send", { session_id: currentSessionId, content }, (msg) => {
-          if (msg.type === "token") {
+          if (msg.type === "hint") {
+            // 加载提示，不加入回复 buffer
+            if (buffer === "") bubbleContent.innerHTML = `<span class="text-muted">${App.escapeHtml(msg.content)}</span>`;
+          } else if (msg.type === "token") {
             if (buffer === "") bubbleContent.innerHTML = "";
             buffer += msg.content;
             if (renderTimer) clearTimeout(renderTimer);

@@ -166,14 +166,21 @@ async def openai_chat_completions(
     # 提取历史消息
     history = []
     user_content = ""
+    system_content = ""
     for i, msg in enumerate(payload.messages):
-        if msg.role == "user":
+        if msg.role == "system":
+            system_content = msg.content
+        elif msg.role == "user":
             if i == len(payload.messages) - 1:
                 user_content = msg.content
             else:
                 history.append(msg.content)
         elif msg.role == "assistant":
             history.append(msg.content)
+
+    # 如果有 system 消息，拼到用户消息前面
+    if system_content:
+        user_content = f"{system_content}\n\n{user_content}" if user_content else system_content
 
     model_path = model.local_path
     model_name = model.name
@@ -210,8 +217,6 @@ async def openai_chat_completions(
         reply = ""
         for chunk in stream_reply(user_content, history, model_path):
             reply += chunk
-        # 清理"加载中"提示
-        reply = reply.replace("（正在加载模型，请稍候...）", "", 1)
         return {
             "id": f"chatcmpl-{created}",
             "object": "chat.completion",
