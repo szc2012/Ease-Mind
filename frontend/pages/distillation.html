@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>模型蒸馏 - EaseMind</title>
-  <link rel="stylesheet" href="/assets/css/style.css">
+  <link rel="stylesheet" href="/assets/css/polish.css">
   <link rel="icon" type="image/svg+xml" href="/assets/ease-mind-logo.svg">
 </head>
 <body>
@@ -17,46 +17,65 @@
         🔬 <strong>模型蒸馏</strong>：用大模型（教师）的知识训练小模型（学生），让小模型获得接近大模型的能力，同时保持推理速度。
       </div>
 
-      <div class="grid" style="grid-template-columns: 1fr 1fr; gap:18px">
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <div class="card-title">蒸馏配置</div>
-              <div class="card-subtitle">选择教师/学生模型与数据集</div>
-            </div>
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">专业蒸馏配置</div>
+            <div class="card-subtitle">选择教师模型、学生模型并自定义蒸馏参数</div>
           </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">教师模型（大模型）</label>
-              <select class="form-select" id="d-teacher"></select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">学生模型（小模型）</label>
-              <select class="form-select" id="d-student"></select>
-            </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">教师模型（大模型）</label>
+            <select class="form-select" id="d-teacher"></select>
           </div>
           <div class="form-group">
-            <label class="form-label">训练数据集（可多选）</label>
-            <div id="d-datasets" class="dataset-checklist"></div>
+            <label class="form-label">学生模型（小模型）</label>
+            <select class="form-select" id="d-student"></select>
           </div>
+        </div>
+        <div class="form-row">
           <div class="form-group">
             <label class="form-label">任务名称</label>
             <input class="form-input" id="d-name" placeholder="例如：Qwen3-0.6B 蒸馏到 0.5B">
           </div>
-          <div id="param-fields"></div>
-          <button class="btn btn-primary btn-lg btn-block" id="start-btn">🔬 开始蒸馏</button>
+        </div>
+        <div class="form-group">
+          <label class="form-label">训练数据集（可多选）</label>
+          <div id="d-datasets" class="dataset-checklist"></div>
+        </div>
+        <div id="param-fields"></div>
+        <button class="btn btn-primary btn-lg btn-block" id="start-btn">开始模型蒸馏</button>
+      </div>
+
+      <div class="card mt-3" id="progress-card" style="display:none">
+        <div class="card-header">
+          <div>
+            <div class="card-title">蒸馏进度</div>
+            <div class="card-subtitle">实时 Loss 曲线与日志输出</div>
+          </div>
+          <div class="flex items-center gap-2">
+            <span id="t-status" class="badge badge-accent">运行中</span>
+            <span id="pct" class="text-muted text-sm">0%</span>
+          </div>
+        </div>
+        <div class="progress-bar mb-3"><div class="progress-fill" id="p-fill" style="width:0%"></div></div>
+
+        <div class="form-row mb-3" style="align-items:flex-end">
+          <div class="form-group" style="margin:0;flex:1">
+            <label class="form-label">Loss 曲线（total / distill / ce）</label>
+            <div id="loss-chart" class="loss-chart" style="height:240px"></div>
+          </div>
+          <div style="text-align:right;min-width:140px">
+            <div class="text-xs text-muted">当前 Total Loss</div>
+            <div id="cur-loss" style="font-size:22px;font-weight:700;color:var(--accent);font-family:var(--font-mono)">-</div>
+            <div class="text-xs text-muted">采样点 <span id="loss-count">0</span></div>
+          </div>
         </div>
 
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <div class="card-title">蒸馏日志</div>
-              <div class="card-subtitle">实时输出蒸馏过程详情</div>
-            </div>
-          </div>
-          <div id="progress-area">
-            <div class="empty-state"><div class="empty-icon">🔬</div><div class="empty-text">开始蒸馏后将显示日志</div></div>
-          </div>
+        <div>
+          <label class="form-label">蒸馏日志</label>
+          <div id="log-box" class="log-viewer" style="max-height:340px"></div>
         </div>
       </div>
 
@@ -138,33 +157,36 @@
         startStreaming(task.id);
         loadHistory();
       } catch (err) { App.toast(err.message, "error"); }
-      finally { btn.disabled = false; btn.textContent = "🔬 开始蒸馏"; }
+      finally { btn.disabled = false; btn.textContent = "开始模型蒸馏"; }
     };
 
     function startStreaming(taskId) {
-      const area = document.getElementById("progress-area");
-      area.innerHTML = `
-        <div class="flex items-center justify-between mb-2">
-          <div><strong>蒸馏进度</strong> <span id="pct">0%</span></div>
-          <span id="t-status" class="badge badge-accent">运行中</span>
-        </div>
-        <div class="progress-bar mb-3"><div class="progress-fill" id="p-fill" style="width:0%"></div></div>
-        <div class="card mb-3" style="padding:12px">
-          <div class="text-sm mb-1"><strong>📉 Loss 曲线</strong>（total / distill / ce）</div>
-          <div id="loss-chart"></div>
-        </div>
-        <div class="log-viewer" id="log-box" style="max-height:380px"></div>
-      `;
+      const progressCard = document.getElementById("progress-card");
+      progressCard.style.display = "block";
       const logBox = document.getElementById("log-box");
       const pFill = document.getElementById("p-fill");
       const pct = document.getElementById("pct");
       const tStatus = document.getElementById("t-status");
       const lossChart = document.getElementById("loss-chart");
+      const curLoss = document.getElementById("cur-loss");
+      const lossCount = document.getElementById("loss-count");
+      logBox.innerHTML = "";
+      pFill.style.width = "0%";
+      pct.textContent = "0%";
+      tStatus.className = "badge badge-accent";
+      tStatus.textContent = "运行中";
+      curLoss.textContent = "-";
+      lossCount.textContent = "0";
+      progressCard.scrollIntoView({ behavior: "smooth", block: "start" });
 
       async function refreshLoss() {
         try {
           const data = await App.api.get(`/api/distillation/${taskId}/loss`);
-          App.drawLossChart(lossChart, data?.data?.points || [], { showDistill: true });
+          const points = data?.data?.points || [];
+          App.drawLossChart(lossChart, points, { showDistill: true });
+          const valid = points.filter(point => point.loss != null);
+          lossCount.textContent = valid.length;
+          curLoss.textContent = valid.length ? Number(valid[valid.length - 1].loss).toFixed(4) : "-";
         } catch (e) { /* 忽略 */ }
       }
       if (lossTimer) { clearInterval(lossTimer); lossTimer = null; }
