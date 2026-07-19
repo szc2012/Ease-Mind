@@ -199,6 +199,74 @@ button, input, select, textarea { font: inherit; }
 .db-kpi-icon { width: 39px; height: 39px; border-radius: 11px; }
 .db-kpi-value { font-family: var(--font-mono); font-size: 21px; font-variant-numeric: tabular-nums; }
 
+/* 系统资源条带：GPU / 磁盘 / 活跃任务 */
+.sys-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 12px 0 16px;
+}
+.sys-card {
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sys-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.sys-card-title {
+  font-size: 12px;
+  color: var(--text-muted);
+  letter-spacing: .02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sys-card-badge {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sys-card-badge.badge-success { background: var(--success-light); color: var(--success); }
+.sys-card-badge.badge-accent { background: var(--accent-light); color: var(--accent); }
+.sys-card-badge.badge-neutral { background: var(--surface-hover); color: var(--text-muted); }
+.sys-card-body { min-width: 0; }
+.sys-metric-main {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sys-metric-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 3px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
 /* 按钮与输入 */
 .btn {
   min-height: 38px;
@@ -418,6 +486,9 @@ button, input, select, textarea { font: inherit; }
   .db-kpi-icon { width: 34px; height: 34px; }
   .db-kpi-value { font-size: 18px; }
   .db-kpi-label { font-size: 10px; }
+  .sys-row { grid-template-columns: 1fr; gap: 10px; margin: 10px 0 12px; }
+  .sys-card { padding: 11px 12px; }
+  .sys-metric-main { font-size: 18px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

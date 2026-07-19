@@ -21,6 +21,7 @@ from database import SessionLocal
 from models import TrainingTask, AIModel, Dataset
 from services.dataset_service import get_dataset_text
 from services.loss_service import record_loss
+from services.evaluation_service import evaluate_finetuned_model
 
 
 # 专业模式参数定义
@@ -368,6 +369,25 @@ def _run_real_training(task_id: str) -> None:
         write_log(task_id, f"输出模型：{result_model.name}")
         write_log(task_id, f"本地路径：{save_path}")
         write_log(task_id, "=" * 60)
+
+        # ---- 自动评估：对比基础模型与微调模型在同一组 prompt 上的回复 ----
+        try:
+            write_log(task_id, "")
+            write_log(task_id, "▶ 自动评估：对比基础模型与微调模型回复")
+            eval_results = evaluate_finetuned_model(
+                base_model_path=model_path,
+                finetuned_model_path=save_path,
+            )
+            task.evaluation = eval_results
+            db.commit()
+            write_log(task_id, f"  评估完成：共 {len(eval_results)} 组对比已记录")
+            write_log(task_id, "  可在训练历史中点击「查看评估」查看对比结果")
+        except Exception as eval_err:
+            # 评估失败不影响训练成果
+            try:
+                write_log(task_id, f"  [警告] 自动评估失败：{eval_err}")
+            except Exception:
+                pass
     except Exception as e:
         try:
             db.rollback()

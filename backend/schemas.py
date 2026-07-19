@@ -34,8 +34,14 @@ class TokenOut(BaseModel):
 
 # ---- 模型 ----
 class ModelDownloadRequest(BaseModel):
-    model_id: str = Field(..., description="魔搭社区模型ID，例如 ZhipuAI/glm-4-9b-chat")
+    model_id: str = Field(..., description="魔搭社区模型ID，例如 ZhipusAI/glm-4-9b-chat")
     name: Optional[str] = None
+
+
+class LocalModelImportRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=128, description="模型显示名称")
+    local_path: str = Field(..., description="本地模型目录的绝对路径")
+    description: Optional[str] = None
 
 
 class ModelUpdateRequest(BaseModel):
@@ -104,6 +110,7 @@ class TrainingOut(BaseModel):
     params: dict
     result_model_id: Optional[str]
     error_message: Optional[str]
+    evaluation: Optional[list] = None
     created_at: datetime
     started_at: Optional[datetime]
     finished_at: Optional[datetime]

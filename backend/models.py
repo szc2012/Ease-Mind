@@ -67,6 +67,8 @@ class TrainingTask(Base):
     result_model_id = Column(String(64), nullable=True)
     log_file = Column(String(512), nullable=True)
     error_message = Column(Text, nullable=True)
+    # 自动评估结果：[{prompt, base_reply, finetuned_reply, error}]
+    evaluation = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     started_at = Column(DateTime, nullable=True)
     finished_at = Column(DateTime, nullable=True)

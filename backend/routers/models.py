@@ -1,4 +1,4 @@
-"""模型管理路由：下载魔搭模型、列表、设为可用、删除"""
+"""模型管理路由：下载魔搭模型、导入本地模型、列表、设为可用、删除"""
 import shutil
 from pathlib import Path
 
@@ -9,7 +9,13 @@ from auth import get_current_user, require_admin
 from config import MODEL_DIR
 from database import get_db
 from models import User, AIModel
-from schemas import ModelDownloadRequest, ModelUpdateRequest, ModelOut, ApiResponse
+from schemas import (
+    ModelDownloadRequest,
+    LocalModelImportRequest,
+    ModelUpdateRequest,
+    ModelOut,
+    ApiResponse,
+)
 from services.modelscope_service import start_download, read_log
 
 router = APIRouter(prefix="/api/models", tags=["模型管理"])
@@ -49,6 +55,87 @@ def download_model(
     db.refresh(model)
     start_download(model)
     return ApiResponse(success=True, message="已开始下载模型，请查看日志", data={"id": model.id})
+
+
+@router.post("/import", response_model=ModelOut)
+def import_local_model(
+    payload: LocalModelImportRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
+    """导入本地已下载的模型目录（不限于魔搭来源）
+
+    校验：
+    - 路径存在且为目录
+    - 必须包含 config.json
+    - 必须包含 tokenizer 文件之一（tokenizer.json / tokenizer_config.json / tokenizer.model）
+    - 必须包含权重文件（*.safetensors / *.bin，或 model.safetensors / pytorch_model.bin）
+    - 同一路径不可重复导入
+    """
+    raw = (payload.local_path or "").strip()
+    if not raw:
+        raise HTTPException(status_code=400, detail="本地路径不能为空")
+
+    # 展开 ~ 与相对路径，resolve 成绝对路径
+    p = Path(raw).expanduser()
+    try:
+        p = p.resolve()
+    except Exception:
+        raise HTTPException(status_code=400, detail="路径解析失败，请检查输入")
+
+    if not p.exists():
+        raise HTTPException(status_code=400, detail=f"目录不存在：{p}")
+    if not p.is_dir():
+        raise HTTPException(status_code=400, detail=f"路径不是目录：{p}")
+
+    # 必要文件校验
+    if not (p / "config.json").exists():
+        raise HTTPException(
+            status_code=400,
+            detail="模型目录缺少 config.json，请确认目录是 transformers 标准结构",
+        )
+
+    has_tokenizer = any(
+        (p / fn).exists()
+        for fn in ["tokenizer.json", "tokenizer_config.json", "tokenizer.model"]
+    )
+    if not has_tokenizer:
+        raise HTTPException(
+            status_code=400,
+            detail="模型目录缺少 tokenizer 文件（tokenizer.json / tokenizer_config.json / tokenizer.model）",
+        )
+
+    # 权重文件：接受 model.safetensors、pytorch_model.bin，或任何 *.safetensors / *.bin
+    weight_files = [
+        f.name for f in p.iterdir()
+        if f.is_file() and (f.name.endswith(".safetensors") or f.name.endswith(".bin"))
+    ]
+    if not weight_files:
+        raise HTTPException(
+            status_code=400,
+            detail="模型目录缺少权重文件（*.safetensors 或 *.bin）",
+        )
+
+    # 防止同一路径重复导入
+    exists = db.query(AIModel).filter(AIModel.local_path == str(p)).first()
+    if exists:
+        raise HTTPException(
+            status_code=400,
+            detail=f"该路径已导入为模型「{exists.name}」，请勿重复添加",
+        )
+
+    model = AIModel(
+        name=payload.name,
+        source="local",
+        model_id=f"local/{p.name}",
+        local_path=str(p),
+        status="ready",
+        description=payload.description or f"本地导入：{p}",
+    )
+    db.add(model)
+    db.commit()
+    db.refresh(model)
+    return model
 
 
 @router.get("/{model_id}/log", response_model=ApiResponse)

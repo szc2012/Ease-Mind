@@ -23,6 +23,7 @@ from routers import distillation as distillation_router
 from routers import chat as chat_router
 from routers import apikeys as apikeys_router
 from routers import channels as channels_router
+from routers import system as system_router
 
 FRONTEND_DIR = BASE_DIR / "frontend"
 
@@ -30,6 +31,8 @@ FRONTEND_DIR = BASE_DIR / "frontend"
 def init_db():
     """创建数据库表并初始化默认管理员"""
     Base.metadata.create_all(bind=engine)
+    # 轻量迁移：为已存在的 training_tasks 表追加 evaluation 列
+    _ensure_column("training_tasks", "evaluation", "JSON")
     db = SessionLocal()
     try:
         admin = db.query(User).filter(User.username == settings.ADMIN_USERNAME).first()
@@ -44,6 +47,20 @@ def init_db():
             print(f"[初始化] 已创建默认管理员：{settings.ADMIN_USERNAME}（请通过环境变量修改默认密码）")
     finally:
         db.close()
+
+
+def _ensure_column(table: str, column: str, ddl_type: str) -> None:
+    """SQLite 轻量迁移：若表中缺少某列则追加（仅支持末尾追加）"""
+    from sqlalchemy import text, inspect
+    insp = inspect(engine)
+    if not insp.has_table(table):
+        return
+    cols = {c["name"] for c in insp.get_columns(table)}
+    if column in cols:
+        return
+    with engine.begin() as conn:
+        conn.execute(text(f'ALTER TABLE {table} ADD COLUMN "{column}" {ddl_type}'))
+    print(f"[迁移] 已为表 {table} 追加列 {column}（{ddl_type}）")
 
 
 @asynccontextmanager
@@ -83,6 +100,7 @@ app.include_router(distillation_router.router)
 app.include_router(chat_router.router)
 app.include_router(apikeys_router.router)
 app.include_router(channels_router.router)
+app.include_router(system_router.router)
 
 
 @app.get("/api/health")

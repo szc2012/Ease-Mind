@@ -45,6 +45,40 @@
         </div>
       </div>
 
+      <!-- 系统资源条带：GPU 显存 / 磁盘占用 / 活跃任务数 -->
+      <div class="sys-row">
+        <div class="sys-card">
+          <div class="sys-card-head">
+            <span class="sys-card-title">⚡ GPU 显存</span>
+            <span class="sys-card-badge" id="sys-gpu-badge">-</span>
+          </div>
+          <div class="sys-card-body">
+            <div class="sys-metric-main" id="sys-gpu-main">-</div>
+            <div class="sys-metric-sub" id="sys-gpu-sub">读取中...</div>
+          </div>
+        </div>
+        <div class="sys-card">
+          <div class="sys-card-head">
+            <span class="sys-card-title">▤ 磁盘占用</span>
+            <span class="sys-card-badge" id="sys-disk-badge">-</span>
+          </div>
+          <div class="sys-card-body">
+            <div class="sys-metric-main" id="sys-disk-main">-</div>
+            <div class="sys-metric-sub" id="sys-disk-sub">读取中...</div>
+          </div>
+        </div>
+        <div class="sys-card">
+          <div class="sys-card-head">
+            <span class="sys-card-title">▶ 活跃任务</span>
+            <span class="sys-card-badge" id="sys-task-badge">-</span>
+          </div>
+          <div class="sys-card-body">
+            <div class="sys-metric-main" id="sys-task-main">-</div>
+            <div class="sys-metric-sub" id="sys-task-sub">读取中...</div>
+          </div>
+        </div>
+      </div>
+
       <!-- 主网格 -->
       <div class="db-grid">
         <!-- 训练工作台 + 数据集 -->
@@ -374,8 +408,75 @@
       }
     }
 
+    async function loadSystemStatus() {
+      const gpuMain = document.getElementById("sys-gpu-main");
+      const gpuSub = document.getElementById("sys-gpu-sub");
+      const gpuBadge = document.getElementById("sys-gpu-badge");
+      const diskMain = document.getElementById("sys-disk-main");
+      const diskSub = document.getElementById("sys-disk-sub");
+      const diskBadge = document.getElementById("sys-disk-badge");
+      const taskMain = document.getElementById("sys-task-main");
+      const taskSub = document.getElementById("sys-task-sub");
+      const taskBadge = document.getElementById("sys-task-badge");
+      try {
+        const r = await App.api.get("/api/system/status");
+        const data = r?.data || {};
+        // GPU
+        const gpu = data.gpu || {};
+        if (gpu.device === "cuda" && gpu.total_human) {
+          gpuBadge.textContent = gpu.name || "CUDA";
+          gpuBadge.className = "sys-card-badge badge-success";
+          gpuMain.textContent = gpu.allocated_human || "0 B";
+          gpuSub.textContent = `已用 / 总显存 ${gpu.total_human}`;
+        } else if (gpu.device === "mps") {
+          gpuBadge.textContent = "MPS";
+          gpuBadge.className = "sys-card-badge badge-accent";
+          gpuMain.textContent = "Apple GPU";
+          gpuSub.textContent = gpu.detail || "MPS 显存不可精确查询";
+        } else {
+          gpuBadge.textContent = "CPU";
+          gpuBadge.className = "sys-card-badge badge-neutral";
+          gpuMain.textContent = "无 GPU";
+          gpuSub.textContent = gpu.detail || "仅 CPU 模式";
+        }
+        // 磁盘
+        const disk = data.disk || {};
+        const total = disk.data_total || {};
+        const part = disk.partition || {};
+        diskBadge.textContent = part.used_human ? `分区 ${part.used_human}/${part.total_human}` : "-";
+        diskBadge.className = "sys-card-badge badge-neutral";
+        diskMain.textContent = total.human || "-";
+        const parts = [];
+        if (disk.models) parts.push(`模型 ${disk.models.human}`);
+        if (disk.datasets) parts.push(`数据 ${disk.datasets.human}`);
+        if (disk.logs) parts.push(`日志 ${disk.logs.human}`);
+        if (disk.database) parts.push(`DB ${disk.database.human}`);
+        diskSub.textContent = parts.join(" · ") + (part.free_human ? ` · 剩余 ${part.free_human}` : "");
+        // 活跃任务
+        const act = data.active_tasks || {};
+        const running = act.running || 0;
+        const pending = act.pending || 0;
+        taskBadge.textContent = running > 0 ? "运行中" : "空闲";
+        taskBadge.className = running > 0 ? "sys-card-badge badge-accent" : "sys-card-badge badge-neutral";
+        taskMain.textContent = String(running);
+        const detailParts = [];
+        if (act.training) detailParts.push(`训练 ${act.training}`);
+        if (act.distillation) detailParts.push(`蒸馏 ${act.distillation}`);
+        if (pending) detailParts.push(`待执行 ${pending}`);
+        taskSub.textContent = detailParts.join(" · ") || "无活跃任务";
+      } catch (err) {
+        console.error("loadSystemStatus error", err);
+        gpuMain.textContent = "-";
+        gpuSub.textContent = "读取失败";
+        diskMain.textContent = "-";
+        diskSub.textContent = "读取失败";
+        taskMain.textContent = "-";
+        taskSub.textContent = "读取失败";
+      }
+    }
+
     async function load() {
-      await Promise.all([loadKpis(), loadWorkbench(), loadModels(), loadDatasets(), loadLogs()]);
+      await Promise.all([loadKpis(), loadSystemStatus(), loadWorkbench(), loadModels(), loadDatasets(), loadLogs()]);
     }
 
     load();

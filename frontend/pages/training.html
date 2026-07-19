@@ -84,6 +84,7 @@
     let paramConfig = {};
     let lossVals = [];
     let lossChartTimer = null;
+    let _historyCache = [];
 
     async function loadOptions() {
       try {
@@ -258,11 +259,14 @@
       const el = document.getElementById("task-history");
       try {
         const list = await App.api.get("/api/training");
+        _historyCache = list || [];
         if (list.length === 0) {
           el.innerHTML = `<div class="empty-state"><div class="empty-icon">✦</div><div class="empty-text">暂无训练任务</div></div>`;
           return;
         }
-        el.innerHTML = list.map(t => `
+        el.innerHTML = list.map(t => {
+          const hasEval = t.status === "completed" && Array.isArray(t.evaluation) && t.evaluation.length > 0;
+          return `
           <div class="list-item">
             <div class="list-item-main">
               <div class="list-item-title">${App.escapeHtml(t.name)} <span class="tag">${t.mode === "simple" ? "傻瓜" : "专业"}</span></div>
@@ -270,11 +274,54 @@
             </div>
             <div class="flex items-center gap-1">
               ${App.statusBadge(t.status)}
+              ${hasEval ? `<button class="btn btn-ghost btn-sm" onclick="viewEvaluation('${t.id}')">查看评估</button>` : ""}
               <button class="btn btn-ghost btn-sm" onclick="viewLog('${t.id}')">查看日志</button>
             </div>
           </div>
-        `).join("");
+        `;}).join("");
       } catch (err) { App.toast(err.message, "error"); }
+    }
+
+    function viewEvaluation(id) {
+      const t = _historyCache.find(x => x.id === id);
+      if (!t || !Array.isArray(t.evaluation) || t.evaluation.length === 0) {
+        App.toast("暂无评估结果", "error");
+        return;
+      }
+      const wrap = document.createElement("div");
+      wrap.style.cssText = "display:flex;flex-direction:column;gap:14px;max-height:70vh;overflow:auto";
+      const intro = document.createElement("div");
+      intro.className = "alert alert-info";
+      intro.innerHTML = `训练完成后自动评估：用 <strong>${t.evaluation.length}</strong> 组预设 prompt 对比<strong>基础模型</strong>与<strong>微调模型</strong>的回复。`;
+      wrap.appendChild(intro);
+      t.evaluation.forEach((item, i) => {
+        const block = document.createElement("div");
+        block.style.cssText = "border:1px solid var(--border);border-radius:10px;overflow:hidden";
+        const head = document.createElement("div");
+        head.style.cssText = "padding:9px 12px;background:var(--surface-hover);font-size:12px;color:var(--text-muted);border-bottom:1px solid var(--border)";
+        head.textContent = `评估 ${i + 1} · ${item.prompt}`;
+        block.appendChild(head);
+        const grid = document.createElement("div");
+        grid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border)";
+        const baseCell = document.createElement("div");
+        baseCell.style.cssText = "padding:11px 12px;background:var(--surface)";
+        baseCell.innerHTML = `<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">基础模型</div><div style="font-size:13px;line-height:1.55;white-space:pre-wrap;word-break:break-word">${App.escapeHtml(item.base_reply || "（空）")}</div>`;
+        const ftCell = document.createElement("div");
+        ftCell.style.cssText = "padding:11px 12px;background:var(--surface)";
+        ftCell.innerHTML = `<div style="font-size:11px;color:var(--accent);margin-bottom:6px">微调模型</div><div style="font-size:13px;line-height:1.55;white-space:pre-wrap;word-break:break-word">${App.escapeHtml(item.finetuned_reply || "（空）")}</div>`;
+        grid.appendChild(baseCell);
+        grid.appendChild(ftCell);
+        block.appendChild(grid);
+        if (item.error) {
+          const err = document.createElement("div");
+          err.className = "alert alert-warning";
+          err.style.cssText = "margin:0;border-radius:0;border-left:none;border-right:none;border-top:1px solid var(--border)";
+          err.textContent = "评估异常：" + item.error;
+          block.appendChild(err);
+        }
+        wrap.appendChild(block);
+      });
+      App.modal({ title: "训练评估对比", body: wrap });
     }
 
     async function viewLog(id) {

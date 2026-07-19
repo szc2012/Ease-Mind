@@ -17,13 +17,13 @@
         <div class="card-header">
           <div>
             <div class="card-title">从魔搭社区下载模型</div>
-            <div class="card-subtitle">输入魔搭社区模型 ID（如 ZhipuAI/glm-4-9b-chat），平台将自动下载</div>
+            <div class="card-subtitle">输入魔搭社区模型 ID（如 ZhipusAI/glm-4-9b-chat），平台将自动下载</div>
           </div>
         </div>
         <div class="form-row">
           <div class="form-group" style="flex:2">
             <label class="form-label">魔搭模型 ID</label>
-            <input class="form-input" id="dl-model-id" placeholder="例如：ZhipuAI/glm-4-9b-chat">
+            <input class="form-input" id="dl-model-id" placeholder="例如：ZhipusAI/glm-4-9b-chat">
             <div class="form-hint">可在 <a href="https://modelscope.cn/models" target="_blank">modelscope.cn/models</a> 复制模型名</div>
           </div>
           <div class="form-group" style="flex:1">
@@ -32,6 +32,31 @@
           </div>
         </div>
         <button class="btn btn-primary" id="dl-btn">开始下载</button>
+      </div>
+
+      <div class="card mb-3">
+        <div class="card-header">
+          <div>
+            <div class="card-title">导入本地模型</div>
+            <div class="card-subtitle">从本地目录导入已下载的模型（HuggingFace / 自训练 / 其他来源均支持）</div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="flex:2">
+            <label class="form-label">本地模型目录路径</label>
+            <input class="form-input" id="im-path" placeholder="例如：/Users/xxx/models/qwen-0.5b">
+            <div class="form-hint">需为绝对路径，支持 <code>~</code> 展开。目录内须包含 config.json、tokenizer 与权重文件</div>
+          </div>
+          <div class="form-group" style="flex:1">
+            <label class="form-label">显示名称</label>
+            <input class="form-input" id="im-name" placeholder="例如：我的小说模型">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">备注（可选）</label>
+          <input class="form-input" id="im-desc" placeholder="例如：从 HuggingFace 下载的小说微调基座">
+        </div>
+        <button class="btn btn-primary" id="im-btn">导入模型</button>
       </div>
 
       <div class="card">
@@ -65,6 +90,30 @@
       }
     };
 
+    document.getElementById("im-btn").onclick = async () => {
+      const localPath = document.getElementById("im-path").value.trim();
+      const name = document.getElementById("im-name").value.trim();
+      const desc = document.getElementById("im-desc").value.trim();
+      if (!localPath) { App.toast("请填写本地模型目录路径", "error"); return; }
+      if (!name) { App.toast("请填写显示名称", "error"); return; }
+      const btn = document.getElementById("im-btn");
+      btn.disabled = true; btn.textContent = "导入中...";
+      try {
+        await App.api.post("/api/models/import", {
+          name, local_path: localPath, description: desc || null,
+        });
+        App.toast("本地模型已导入", "success");
+        document.getElementById("im-path").value = "";
+        document.getElementById("im-name").value = "";
+        document.getElementById("im-desc").value = "";
+        loadModels();
+      } catch (err) {
+        App.toast(err.message, "error");
+      } finally {
+        btn.disabled = false; btn.textContent = "导入模型";
+      }
+    };
+
     async function loadModels() {
       const listEl = document.getElementById("model-list");
       try {
@@ -78,7 +127,7 @@
             <div class="list-item-main">
               <div class="list-item-title">
                 ${App.escapeHtml(m.name)}
-                ${m.source === "finetune" ? '<span class="tag">微调</span>' : m.source === "distill" ? '<span class="tag">蒸馏</span>' : '<span class="tag">基础</span>'}
+                ${m.source === "finetune" ? '<span class="tag">微调</span>' : m.source === "distill" ? '<span class="tag">蒸馏</span>' : m.source === "local" ? '<span class="tag">本地</span>' : '<span class="tag">基础</span>'}
                 ${m.is_active ? '<span class="badge badge-accent">默认对话</span>' : ''}
               </div>
               <div class="list-item-sub">
