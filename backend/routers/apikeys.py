@@ -154,7 +154,7 @@ async def openai_chat_completions(
 
     使用方式：
     ```
-    curl -X POST http://localhost:8080/api/v1/chat/completions \
+    curl -X POST http://localhost:8800/api/v1/chat/completions \
       -H "Authorization: Bearer em-xxxxxx" \
       -H "Content-Type: application/json" \
       -d '{"messages":[{"role":"user","content":"你好"}],"stream":true}'

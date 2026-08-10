@@ -10,10 +10,10 @@ from auth import get_current_user, require_admin
 from config import LOG_DIR
 from database import get_db, SessionLocal
 from models import User, TrainingTask, AIModel, Dataset
-from schemas import TrainingCreateRequest, TrainingOut, ApiResponse
+from schemas import TrainingCreateRequest, TrainingOut, ApiResponse, EvalScoreRequest
 from services.training_service import (
     start_training, read_log, get_log_path,
-    PROFESSIONAL_PARAMS, SIMPLE_PRESETS,
+    PROFESSIONAL_PARAMS, SIMPLE_PRESETS, start_reinforce_training, start_dialog_eval,
 )
 from services.loss_service import get_loss_points
 
@@ -69,6 +69,17 @@ def create_task(
             if k not in params:
                 params[k] = cfg["default"]
 
+    # 预设对话评测（仅专业模式有意义，傻瓜模式忽略）
+    eval_dialogs = None
+    if payload.eval_dialogs:
+        eval_dialogs = [
+            {"question": d.question.strip(), "answer": d.answer.strip(),
+             "model_reply": "", "score": 0}
+            for d in payload.eval_dialogs if d.question.strip()
+        ][:20]  # 最多 20 条
+        if not eval_dialogs:
+            eval_dialogs = None
+
     task = TrainingTask(
         name=payload.name,
         model_id=payload.model_id,
@@ -76,6 +87,8 @@ def create_task(
         mode=payload.mode,
         status="pending",
         params=params,
+        eval_dialogs=eval_dialogs,
+        eval_score=0,
     )
     db.add(task)
     db.commit()
@@ -170,6 +183,67 @@ async def stream_task_log(
             await asyncio.sleep(1.0)
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
+
+
+@router.post("/{task_id}/eval/score", response_model=ApiResponse)
+def score_eval_dialog(
+    task_id: str,
+    payload: EvalScoreRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
+    """对某条对话评测打分：正确 +1 / 错误 -1 / 0 取消"""
+    task = db.query(TrainingTask).filter(TrainingTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    dialogs = list(task.eval_dialogs or [])
+    if payload.index < 0 or payload.index >= len(dialogs):
+        raise HTTPException(status_code=400, detail="对话索引越界")
+    if payload.score not in (1, -1, 0):
+        raise HTTPException(status_code=400, detail="score 必须是 1 / -1 / 0")
+    dialogs[payload.index]["score"] = payload.score
+    task.eval_dialogs = dialogs
+    # 重算总分
+    task.eval_score = sum(1 for d in dialogs if d.get("score") == 1) - sum(1 for d in dialogs if d.get("score") == -1)
+    db.commit()
+    return ApiResponse(data={"eval_score": task.eval_score, "dialogs": dialogs})
+
+
+@router.post("/{task_id}/eval/run", response_model=ApiResponse)
+def run_dialog_eval_endpoint(
+    task_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
+    """触发对话评测：在独立线程中用结果模型回答预设问题（前端点击「开始评测」）"""
+    task = db.query(TrainingTask).filter(TrainingTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    if task.status != "completed":
+        raise HTTPException(status_code=400, detail="训练未完成")
+    if not task.eval_dialogs:
+        raise HTTPException(status_code=400, detail="该任务没有预设对话")
+    start_dialog_eval(task_id)
+    return ApiResponse(message="对话评测已启动，请稍后刷新查看模型回答", data={})
+
+
+@router.post("/{task_id}/reinforce", response_model=ApiResponse)
+def reinforce_training(
+    task_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
+    """基于打分结果触发评分驱动的追加训练（RLHF 式纠偏）"""
+    task = db.query(TrainingTask).filter(TrainingTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    if task.status != "completed":
+        raise HTTPException(status_code=400, detail="训练未完成，无法追加训练")
+    scored = [d for d in (task.eval_dialogs or []) if d.get("score") in (1, -1) and d.get("answer")]
+    if not scored:
+        raise HTTPException(status_code=400, detail="请先至少给一条有参考答案的对话打分")
+    start_reinforce_training(task_id)
+    return ApiResponse(message="追加训练已启动", data={"scored": len(scored)})
 
 
 @router.get("/{task_id}/loss", response_model=ApiResponse)

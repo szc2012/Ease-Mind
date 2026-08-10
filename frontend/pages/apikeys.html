@@ -53,7 +53,7 @@
           <div><div class="card-title">📖 接口使用说明</div></div>
         </div>
         <div style="padding:16px">
-          <p class="mb-2"><strong>Base URL</strong>：<code>http://localhost:8080/api/v1</code></p>
+          <p class="mb-2"><strong>Base URL</strong>：<code>http://localhost:8800/api/v1</code></p>
           <p class="mb-2"><strong>认证方式</strong>：在请求头中添加 <code>Authorization: Bearer em-xxxxxxxx</code></p>
           <p class="mb-2"><strong>兼容接口</strong>：</p>
           <ul style="margin-left:20px;line-height:1.8">
@@ -61,7 +61,7 @@
             <li><code>GET /models</code> — 模型列表</li>
           </ul>
           <p class="mb-1"><strong>cURL 示例</strong>：</p>
-          <pre style="background:var(--bg);padding:12px;border-radius:6px;overflow-x:auto;font-size:12px">curl -X POST http://localhost:8080/api/v1/chat/completions \
+          <pre style="background:var(--bg);padding:12px;border-radius:6px;overflow-x:auto;font-size:12px">curl -X POST http://localhost:8800/api/v1/chat/completions \
   -H "Authorization: Bearer em-xxxxxxxxxxxx" \
   -H "Content-Type: application/json" \
   -d '{
@@ -73,7 +73,7 @@
           <pre style="background:var(--bg);padding:12px;border-radius:6px;overflow-x:auto;font-size:12px">from openai import OpenAI
 
 client = OpenAI(
-    base_url="http://localhost:8080/api/v1",
+    base_url="http://localhost:8800/api/v1",
     api_key="em-xxxxxxxxxxxx"
 )
 
@@ -111,7 +111,7 @@ print(response.choices[0].message.content)</pre>
         body.innerHTML = `
           <div class="alert alert-warning mb-2">⚠️ 请立即复制保存，关闭后将无法再次查看完整密钥。</div>
           <div style="background:var(--bg);padding:12px;border-radius:6px;font-family:monospace;font-size:13px;word-break:break-all;user-select:all">${App.escapeHtml(key.key)}</div>
-          <div class="mt-2 text-sm text-muted">Base URL: <code>http://localhost:8080/api/v1</code></div>
+          <div class="mt-2 text-sm text-muted">Base URL: <code>http://localhost:8800/api/v1</code></div>
         `;
         const copyBtn = document.createElement("button");
         copyBtn.className = "btn btn-primary btn-sm mt-2";
@@ -157,7 +157,7 @@ print(response.choices[0].message.content)</pre>
     }
 
     window.deleteKey = async function(id, name) {
-      if (!confirm(`确定删除密钥「${name}」吗？删除后无法恢复。`)) return;
+      if (!(await App.confirmDialog(`确定删除密钥「${name}」吗？删除后无法恢复。`, { title: "删除密钥" }))) return;
       try {
         await App.api.delete(`/api/apikeys/${id}`);
         App.toast("密钥已删除", "success");

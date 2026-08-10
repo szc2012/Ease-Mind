@@ -88,6 +88,11 @@ class DatasetOut(BaseModel):
 
 
 # ---- 训练 ----
+class EvalDialog(BaseModel):
+    question: str = Field(..., min_length=1)
+    answer: str = Field(default="")
+
+
 class TrainingCreateRequest(BaseModel):
     name: str
     model_id: str
@@ -96,6 +101,13 @@ class TrainingCreateRequest(BaseModel):
     dataset_id: Optional[str] = None
     mode: str = "simple"  # simple / professional
     params: dict = Field(default_factory=dict)
+    # 预设对话评测（专业模式）：训练完成后逐条对话并人工打分
+    eval_dialogs: Optional[list[EvalDialog]] = None
+
+
+class EvalScoreRequest(BaseModel):
+    index: int
+    score: int  # 1 正确 / -1 错误 / 0 取消评分
 
 
 class TrainingOut(BaseModel):
@@ -111,6 +123,8 @@ class TrainingOut(BaseModel):
     result_model_id: Optional[str]
     error_message: Optional[str]
     evaluation: Optional[list] = None
+    eval_dialogs: Optional[list] = None
+    eval_score: int = 0
     created_at: datetime
     started_at: Optional[datetime]
     finished_at: Optional[datetime]

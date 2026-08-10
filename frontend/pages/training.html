@@ -13,6 +13,14 @@
     if (!App.requireAdmin()) throw new Error("no access");
 
     App.renderShell("training", "模型训练", `
+      <style>
+        /* 专业训练两栏布局：宽屏左右并排，窄屏自动堆叠 */
+        .training-grid { display: grid; grid-template-columns: 420px 1fr; gap: 18px; align-items: start; }
+        @media (max-width: 1100px) { .training-grid { grid-template-columns: 1fr; } }
+      </style>
+      <div class="training-grid">
+        <!-- 左栏：训练配置 -->
+        <div>
       <div class="card">
         <div class="card-header">
           <div>
@@ -35,10 +43,32 @@
           <div id="t-datasets" class="dataset-checklist"></div>
         </div>
         <div id="param-fields"></div>
-        <button class="btn btn-primary btn-lg btn-block" id="start-btn">开始专业训练</button>
-      </div>
 
-      <div class="card mt-3" id="progress-card" style="display:none">
+        <!-- 预设对话评测 -->
+        <div class="form-group mt-3">
+          <label class="form-label">💬 预设对话评测 <span class="text-muted text-xs">（可选，训练完成后自动对话，人工打分正确+1/错误-1）</span></label>
+          <div id="eval-dialog-list"></div>
+          <div style="border:1px dashed var(--border);border-radius:10px;padding:12px;margin-top:8px">
+            <div class="form-row" style="margin-bottom:8px">
+              <input class="form-input" id="eval-q" placeholder="问题（如：EaseMind 是什么？）">
+            </div>
+            <div class="form-row" style="margin-bottom:8px">
+              <input class="form-input" id="eval-a" placeholder="参考答案（用于对比与纠偏训练）">
+            </div>
+            <button class="btn btn-secondary btn-sm" id="add-eval-btn">+ 添加对话</button>
+          </div>
+        </div>
+
+        <button class="btn btn-primary btn-lg btn-block mt-3" id="start-btn">开始专业训练</button>
+      </div>
+        </div>
+
+        <!-- 右栏：进度 + 评测 + 历史 -->
+        <div>
+      <div class="card" id="progress-placeholder">
+        <div class="empty-state"><div class="empty-icon">✦</div><div class="empty-text">配置左侧参数并开始训练后，这里将实时显示进度、Loss 曲线与对话评测</div></div>
+      </div>
+      <div class="card" id="progress-card" style="display:none">
         <div class="card-header">
           <div>
             <div class="card-title">训练进度</div>
@@ -67,6 +97,23 @@
           <label class="form-label">训练日志</label>
           <div id="log-box" class="log-viewer" style="max-height:340px"></div>
         </div>
+
+        <!-- 对话评测打分面板（训练完成且有预设对话时显示） -->
+        <div id="eval-panel" style="display:none;margin-top:16px">
+          <div class="flex items-center justify-between mb-2">
+            <label class="form-label" style="margin:0">💬 对话评测打分</label>
+            <div class="flex items-center gap-2">
+              <button class="btn btn-primary btn-sm" id="run-eval-btn">▶ 开始评测</button>
+              <span class="badge" id="eval-score-badge" style="background:var(--surface-hover);font-size:14px;font-weight:700">得分 0</span>
+              <button class="btn btn-secondary btn-sm" id="reinforce-btn">⚡ 用评分追加训练</button>
+            </div>
+          </div>
+          <div class="alert alert-info" style="font-size:12px">
+            微调模型已逐条回答预设问题。请对比「参考答案」与「模型回答」打分：<strong>✓ 正确 +1</strong> / <strong>✗ 错误 -1</strong>。
+            打分后点击「追加训练」，错误对话（问题+参考答案）将被加权强化训练，实现纠偏。
+          </div>
+          <div id="eval-dialog-results" style="display:flex;flex-direction:column;gap:10px"></div>
+        </div>
       </div>
 
       <div class="card mt-3">
@@ -79,12 +126,16 @@
         </div>
         <div id="task-history"></div>
       </div>
+        </div>
+      </div>
     `);
 
     let paramConfig = {};
     let lossVals = [];
     let lossChartTimer = null;
     let _historyCache = [];
+    let evalDialogs = [];      // 预设对话（未提交前）
+    let currentTaskId = null;  // 当前训练任务
 
     async function loadOptions() {
       try {
@@ -179,6 +230,35 @@
       }, 300);
     }
 
+    // ---- 预设对话编辑器 ----
+    function renderEvalEditor() {
+      const el = document.getElementById("eval-dialog-list");
+      if (evalDialogs.length === 0) {
+        el.innerHTML = `<div class="text-muted text-sm" style="padding:4px 0">尚未添加预设对话</div>`;
+        return;
+      }
+      el.innerHTML = evalDialogs.map((d, i) => `
+        <div class="list-item" style="padding:8px 12px">
+          <div class="list-item-main">
+            <div style="font-size:13px"><strong>Q${i + 1}.</strong> ${App.escapeHtml(d.question)}</div>
+            <div class="text-muted text-xs">参考：${App.escapeHtml(d.answer || "（无）")}</div>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="removeEval(${i})">删除</button>
+        </div>`).join("");
+    }
+    window.removeEval = (i) => { evalDialogs.splice(i, 1); renderEvalEditor(); };
+    document.getElementById("add-eval-btn").onclick = () => {
+      const q = document.getElementById("eval-q").value.trim();
+      const a = document.getElementById("eval-a").value.trim();
+      if (!q) { App.toast("请填写问题", "error"); return; }
+      if (evalDialogs.length >= 20) { App.toast("最多 20 条对话", "error"); return; }
+      evalDialogs.push({ question: q, answer: a });
+      document.getElementById("eval-q").value = "";
+      document.getElementById("eval-a").value = "";
+      renderEvalEditor();
+    };
+    renderEvalEditor();
+
     document.getElementById("start-btn").onclick = async () => {
       const modelId = document.getElementById("t-model").value;
       const datasetIds = Array.from(document.querySelectorAll('#t-datasets input[type="checkbox"]:checked')).map(cb => cb.value);
@@ -195,6 +275,7 @@
       try {
         const task = await App.api.post("/api/training", {
           name, model_id: modelId, dataset_ids: datasetIds, mode: "professional", params,
+          eval_dialogs: evalDialogs.length ? evalDialogs : undefined,
         });
         App.toast("训练已启动", "success");
         startStreaming(task.id);
@@ -203,10 +284,124 @@
       finally { btn.disabled = false; btn.textContent = "开始专业训练"; }
     };
 
+    // ---- 对话评测打分面板 ----
+    function renderEvalResults(task) {
+      const panel = document.getElementById("eval-panel");
+      const listEl = document.getElementById("eval-dialog-results");
+      const badge = document.getElementById("eval-score-badge");
+      const dialogs = task.eval_dialogs || [];
+      if (!dialogs.length || task.status !== "completed") { panel.style.display = "none"; return; }
+      currentTaskId = task.id;
+      badge.textContent = `得分 ${task.eval_score || 0}`;
+      badge.style.color = (task.eval_score || 0) >= 0 ? "var(--accent)" : "#c0392b";
+      panel.style.display = "";
+      // 是否已生成模型回答
+      const hasReplies = dialogs.some(d => (d.model_reply || "").trim());
+      document.getElementById("run-eval-btn").style.display = hasReplies ? "none" : "";
+      if (!hasReplies) {
+        listEl.innerHTML = `<div class="alert alert-info">已保存 ${dialogs.length} 条预设对话。点击右上角「▶ 开始评测」，用训练好的模型逐条生成回答后再打分。</div>`;
+        return;
+      }
+      listEl.innerHTML = dialogs.map((d, i) => {
+        const sc = d.score || 0;
+        const borderColor = sc === 1 ? "#27ae60" : sc === -1 ? "#c0392b" : "var(--border)";
+        return `
+        <div style="border:1px solid ${borderColor};border-radius:10px;overflow:hidden">
+          <div style="padding:8px 12px;background:var(--surface-hover);font-size:12px;font-weight:600;border-bottom:1px solid var(--border)">
+            Q${i + 1}. ${App.escapeHtml(d.question)}
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border)">
+            <div style="padding:10px 12px;background:var(--surface)">
+              <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">参考答案</div>
+              <div style="font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word">${App.escapeHtml(d.answer || "（无）")}</div>
+            </div>
+            <div style="padding:10px 12px;background:var(--surface)">
+              <div style="font-size:11px;color:var(--accent);margin-bottom:4px">模型回答</div>
+              <div style="font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word">${App.escapeHtml(d.model_reply || "（空）")}</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;padding:8px 12px;background:var(--surface);border-top:1px solid var(--border)">
+            <button class="btn btn-sm ${sc === 1 ? "btn-primary" : "btn-secondary"}" onclick="scoreDialog(${i}, ${sc === 1 ? 0 : 1})">✓ 正确 +1</button>
+            <button class="btn btn-sm ${sc === -1 ? "btn-primary" : "btn-secondary"}" onclick="scoreDialog(${i}, ${sc === -1 ? 0 : -1})">✗ 错误 -1</button>
+            ${sc !== 0 ? `<span class="text-xs text-muted" style="align-self:center">已评：${sc === 1 ? "正确" : "错误"}</span>` : ""}
+          </div>
+        </div>`;
+      }).join("");
+    }
+
+    window.scoreDialog = async (index, score) => {
+      if (!currentTaskId) return;
+      try {
+        const res = await App.api.post(`/api/training/${currentTaskId}/eval/score`, { index, score });
+        const task = _historyCache.find(t => t.id === currentTaskId) || {};
+        task.eval_dialogs = res.data.dialogs;
+        task.eval_score = res.data.eval_score;
+        task.status = "completed";
+        renderEvalResults(task);
+        loadHistory();
+      } catch (err) { App.toast(err.message, "error"); }
+    };
+
+    // 开始评测：触发后端独立线程生成模型回答，然后轮询刷新
+    document.getElementById("run-eval-btn").onclick = async () => {
+      if (!currentTaskId) return;
+      const btn = document.getElementById("run-eval-btn");
+      btn.disabled = true; btn.textContent = "评测中...";
+      try {
+        await App.api.post(`/api/training/${currentTaskId}/eval/run`, {});
+        App.toast("评测已启动，正在生成模型回答...", "success");
+        // 轮询直到出现 model_reply
+        const poll = setInterval(async () => {
+          try {
+            const t = await App.api.get(`/api/training/${currentTaskId}`);
+            const dialogs = t.eval_dialogs || [];
+            if (dialogs.some(d => (d.model_reply || "").trim())) {
+              clearInterval(poll);
+              const cached = _historyCache.find(x => x.id === currentTaskId);
+              if (cached) { cached.eval_dialogs = dialogs; cached.eval_score = t.eval_score; }
+              renderEvalResults(cached || t);
+              App.toast("评测完成，请打分", "success");
+              btn.disabled = false; btn.textContent = "▶ 开始评测";
+            }
+          } catch (e) { /* 继续轮询 */ }
+        }, 3000);
+        // 最多等 3 分钟
+        setTimeout(() => { clearInterval(poll); btn.disabled = false; btn.textContent = "▶ 开始评测"; }, 180000);
+      } catch (err) {
+        App.toast(err.message, "error");
+        btn.disabled = false; btn.textContent = "▶ 开始评测";
+      }
+    };
+
+    document.getElementById("reinforce-btn").onclick = async () => {
+      if (!currentTaskId) return;
+      const btn = document.getElementById("reinforce-btn");
+      btn.disabled = true; btn.textContent = "启动中...";
+      try {
+        const res = await App.api.post(`/api/training/${currentTaskId}/reinforce`, {});
+        App.toast(`追加训练已启动（${res.data.scored} 条已评分样本）`, "success");
+      } catch (err) { App.toast(err.message, "error"); }
+      finally { btn.disabled = false; btn.textContent = "⚡ 用评分追加训练"; }
+    };
+
+    function showProgressCard() {
+      document.getElementById("progress-card").style.display = "";
+      const ph = document.getElementById("progress-placeholder");
+      if (ph) ph.style.display = "none";
+    }
+
+    window.viewEvalDialogs = (id) => {
+      const t = _historyCache.find(x => x.id === id);
+      if (t) renderEvalResults(t);
+      showProgressCard();
+      document.getElementById("progress-card").scrollIntoView({ behavior: "smooth" });
+    };
+
     function startStreaming(taskId) {
+      currentTaskId = taskId;
       // 显示进度卡片
       const card = document.getElementById("progress-card");
-      card.style.display = "";
+      showProgressCard();
       // 重置 loss
       lossVals = [];
       if (lossChartTimer) { clearTimeout(lossChartTimer); lossChartTimer = null; }
@@ -245,7 +440,11 @@
           // 收尾绘制
           if (lossChartTimer) { clearTimeout(lossChartTimer); lossChartTimer = null; }
           drawLossChart();
-          loadHistory();
+          // 拉取任务详情（含对话评测结果）展示打分面板
+          loadHistory().then(() => {
+            const t = _historyCache.find(x => x.id === taskId);
+            if (t) renderEvalResults(t);
+          });
         }
       }).catch(err => {
         App.toast(err.message, "error");
@@ -266,14 +465,17 @@
         }
         el.innerHTML = list.map(t => {
           const hasEval = t.status === "completed" && Array.isArray(t.evaluation) && t.evaluation.length > 0;
+          const hasDialogs = t.status === "completed" && Array.isArray(t.eval_dialogs) && t.eval_dialogs.length > 0;
+          const scoreTag = hasDialogs ? `<span class="tag" style="background:${(t.eval_score || 0) >= 0 ? "var(--accent)" : "#c0392b"};color:#fff">评测 ${t.eval_score || 0} 分</span>` : "";
           return `
           <div class="list-item">
             <div class="list-item-main">
-              <div class="list-item-title">${App.escapeHtml(t.name)} <span class="tag">${t.mode === "simple" ? "傻瓜" : "专业"}</span></div>
+              <div class="list-item-title">${App.escapeHtml(t.name)} <span class="tag">${t.mode === "simple" ? "傻瓜" : "专业"}</span>${scoreTag}</div>
               <div class="list-item-sub">${App.formatTime(t.created_at)} · 进度 ${(t.progress ?? 0).toFixed(0)}%</div>
             </div>
             <div class="flex items-center gap-1">
               ${App.statusBadge(t.status)}
+              ${hasDialogs ? `<button class="btn btn-ghost btn-sm" onclick="viewEvalDialogs('${t.id}')">对话评测</button>` : ""}
               ${hasEval ? `<button class="btn btn-ghost btn-sm" onclick="viewEvaluation('${t.id}')">查看评估</button>` : ""}
               <button class="btn btn-ghost btn-sm" onclick="viewLog('${t.id}')">查看日志</button>
             </div>

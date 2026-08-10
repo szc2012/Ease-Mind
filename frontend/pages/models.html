@@ -169,7 +169,7 @@
     }
 
     async function delModel(id, name) {
-      if (!confirm(`确定删除模型「${name}」吗？`)) return;
+      if (!(await App.confirmDialog(`确定删除模型「${name}」吗？`, { title: "删除模型" }))) return;
       try {
         await App.api.delete(`/api/models/${id}`);
         App.toast("模型已删除", "success");

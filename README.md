@@ -45,7 +45,7 @@ cd Ease-Mind
 docker compose up -d --build
 ```
 
-打开浏览器访问 http://localhost:8080
+打开浏览器访问 http://localhost:8800
 
 > 💡 数据持久化通过 Docker Volume 自动管理，容器重建后模型、数据集、数据库不丢失。
 > 如需修改管理员密码或训练模式，编辑 `docker-compose.yml` 中的 `environment` 即可。
@@ -69,7 +69,7 @@ cd backend
 python main.py
 ```
 
-打开浏览器访问 http://localhost:8080
+打开浏览器访问 http://localhost:8800
 
 **默认管理员账户**：`admin` / `admin123`
 
@@ -163,11 +163,9 @@ Ease-Mind/
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
 | `HOST` | `0.0.0.0` | 服务监听地址 |
-| `PORT` | `8080` | 服务端口 |
+| `PORT` | `8800` | 服务端口 |
 | `ADMIN_USERNAME` | `admin` | 默认管理员用户名 |
 | `ADMIN_PASSWORD` | `admin123` | 默认管理员密码（**生产环境务必修改**） |
-| `MODEL_DOWNLOAD_MODE` | `real` | 模型下载模式：`real`（魔搭真实下载）/ `mock`（模拟） |
-| `TRAINING_MODE` | `real` | 训练模式：`real`（真实 LoRA + 蒸馏）/ `mock`（模拟） |
 
 ## 🛠️ 技术栈
 
@@ -265,7 +263,7 @@ cd backend
 python main.py
 ```
 
-打开浏览器访问 http://localhost:8080，使用管理员账户 `admin` / `admin123` 登录。
+打开浏览器访问 http://localhost:8800，使用管理员账户 `admin` / `admin123` 登录。
 
 ### 第二步：下载基础模型
 
@@ -417,7 +415,7 @@ Loss 持续下降通常说明训练正常。如果 Loss 不下降或变成 `nan`
 1. 进入「API 密钥」页面。
 2. 填写密钥名称，选择要绑定的模型（可选）。
 3. 点击「生成密钥」，复制完整密钥（仅显示一次）。
-4. 在第三方客户端中配置 Base URL `http://localhost:8080/api/v1` 与密钥即可调用。
+4. 在第三方客户端中配置 Base URL `http://localhost:8800/api/v1` 与密钥即可调用。
 
 ### 调参建议
 
@@ -479,8 +477,8 @@ Loss 持续下降通常说明训练正常。如果 Loss 不下降或变成 `nan`
 ## 🔌 API 文档
 
 启动服务后访问：
-- Swagger UI：http://localhost:8080/docs
-- ReDoc：http://localhost:8080/redoc
+- Swagger UI：http://localhost:8800/docs
+- ReDoc：http://localhost:8800/redoc
 
 主要接口：
 
@@ -574,20 +572,13 @@ POST   /api/chat/send               # 发送消息（流式回复）
 ### Q：删除模型会删除本地文件吗？
 - 会。删除模型时自动用 `shutil.rmtree` 清理 `local_path` 目录及空父目录，释放磁盘空间
 
-### Q：如何切换到模拟模式（不依赖 GPU）？
-修改 `backend/config.py`：
-```python
-TRAINING_MODE = "mock"
-MODEL_DOWNLOAD_MODE = "mock"
-```
-
 ### Q：微调后的模型可以再训练吗？
 - 可以。微调与蒸馏产出的模型状态为 `ready`，可直接在「傻瓜微调」「专业训练」「模型蒸馏」中作为基础模型/学生模型再次使用，实现迭代提升。
 
 ### Q：如何使用 API Key？
 1. 在「API 密钥」页面生成密钥（仅创建时显示完整密钥，后续只显示前缀）
 2. 调用 OpenAI 兼容接口时，在请求头中添加 `Authorization: Bearer em-xxxxxxxx`
-3. Base URL 为 `http://localhost:8080/api/v1`
+3. Base URL 为 `http://localhost:8800/api/v1`
 4. 支持 `POST /chat/completions`（流式与非流式）与 `GET /models`
 
 ### Q：Loss 曲线不显示？

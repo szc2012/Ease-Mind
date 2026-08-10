@@ -1,10 +1,6 @@
-"""ModelScope 模型下载服务
+"""ModelScope 模型下载服务：使用 modelscope SDK 真实下载。
 
-根据 settings.MODEL_DOWNLOAD_MODE 决定下载方式：
-- "real"    使用 modelscope SDK 真实下载（默认）
-- "mock"    模拟下载（不联网，仅生成占位文件，用于演示流程）
-
-真实模式下若 SDK 未安装或下载异常，会记录详细错误到日志，并将状态置为 failed。
+若 SDK 未安装或下载异常，会记录详细错误到日志，并将状态置为 failed。
 """
 import os
 import time
@@ -13,7 +9,7 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
-from config import MODEL_DIR, LOG_DIR, settings
+from config import MODEL_DIR, LOG_DIR
 from database import SessionLocal
 from models import AIModel
 
@@ -31,6 +27,40 @@ except Exception:
 
 def _log_path(model_id: str) -> Path:
     return LOG_DIR / f"model_{model_id}.log"
+
+
+def _read_config(local_path) -> dict:
+    """读取模型目录下的 config.json，失败返回空 dict"""
+    try:
+        cfg_file = Path(local_path) / "config.json"
+        if cfg_file.exists():
+            import json as _json
+            return _json.loads(cfg_file.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
+def _is_causal_lm(cfg: dict) -> bool:
+    """判断是否为文本生成（CausalLM）模型。
+
+    依据 architectures 与 model_type 排除语音(ASR)/音频/视觉/OCR/TTS 等
+    非文本生成架构，这些模型无法用于本平台的文本训练与对话。
+    """
+    arch = ((cfg.get("architectures") or [""])[0]).lower()
+    mtype = (cfg.get("model_type") or "").lower()
+    text = arch + " " + mtype
+    # 明确不支持的类型关键词（纯语音/音频/视觉/OCR/TTS 等，无法做文本生成）
+    blocked = ["asr", "whisper", "speech", "tts", "musicgen", "ocr", "clip", "blip"]
+    if any(kw in text for kw in blocked):
+        return False
+    # 统一多模态模型（如 gemma4_unified）支持文本生成 → 放行，走文本模式
+    if "unified" in mtype or "unified" in arch:
+        return True
+    # ForConditionalGeneration 但不带 Causal/LM/Unified 字样 → 多为 seq2seq/纯多模态，拒绝
+    if "forconditionalgeneration" in arch and "causal" not in arch and "lm" not in arch:
+        return False
+    return True
 
 
 def _log(model_id: str, message: str) -> None:
@@ -124,6 +154,17 @@ def _download_real(model_id: str, model_repo: str) -> None:
             _set_status(model_id, "failed", description="下载结果为空")
             return
 
+        # 校验是否为文本生成（CausalLM）模型，拒绝 ASR/语音/视觉等不支持的类型
+        cfg = _read_config(local_path)
+        arch = (cfg.get("architectures") or [""])[0]
+        mtype = cfg.get("model_type", "")
+        if cfg and not _is_causal_lm(cfg):
+            _log(model_id, f"[错误] 模型类型不支持文本训练/对话：model_type={mtype}, architecture={arch}")
+            _log(model_id, "仅支持文本生成类模型（如 Qwen3-0.6B、minimind 等 CausalLM）。")
+            _set_status(model_id, "failed",
+                        description=f"不支持的模型类型（{mtype or arch}），仅支持文本生成模型")
+            return
+
         _log(model_id, "=" * 50)
         _log(model_id, "模型下载完成，已就绪！")
         _log(model_id, "=" * 50)
@@ -146,54 +187,14 @@ def _download_real(model_id: str, model_repo: str) -> None:
         _log(model_id, "  3. 磁盘空间是否充足")
 
 
-def _download_mock(model_id: str, model_repo: str) -> None:
-    """模拟下载进度，便于无网络/无 SDK 环境体验完整流程"""
-    _set_status(model_id, "downloading")
-    _log(model_id, f"（模拟模式）开始下载模型：{model_repo}")
-    steps = [
-        "解析模型仓库信息...",
-        "获取文件列表：config.json, model.safetensors, tokenizer.json",
-        "下载 config.json (1.2 KB) ✓",
-        "下载 tokenizer.json (876 KB) ✓",
-        "下载 model.safetensors (4.2 GB)...",
-        "下载 model.safetensors 进度 25%...",
-        "下载 model.safetensors 进度 50%...",
-        "下载 model.safetensors 进度 75%...",
-        "下载 model.safetensors 进度 100% ✓",
-        "校验文件完整性...",
-        "模型加载就绪。",
-    ]
-    for step in steps:
-        time.sleep(0.8)
-        _log(model_id, step)
-    fake_path = MODEL_DIR / model_repo.replace("/", "_")
-    fake_path.mkdir(parents=True, exist_ok=True)
-    (fake_path / "config.json").write_text('{"mock": true}', encoding="utf-8")
-    _log(model_id, f"（模拟）模型下载完成：{fake_path}")
-    _log(model_id, "注意：这是模拟模式，仅生成占位文件。若需真实下载，请在 config.py 设置 MODEL_DOWNLOAD_MODE='real'")
-    _set_status(
-        model_id,
-        "ready",
-        local_path=str(fake_path),
-        description=f"（模拟）从魔搭社区下载：{model_repo}",
-    )
-
-
 def start_download(model: AIModel) -> None:
-    """异步启动模型下载线程"""
-    mode = settings.MODEL_DOWNLOAD_MODE.lower()
-    # 真实模式但 SDK 未装时，自动降级为 mock 并提示
-    if mode == "real" and not HAS_MODELSCOPE:
-        _log(model.id, "[警告] MODEL_DOWNLOAD_MODE='real' 但未安装 modelscope SDK，本次将使用模拟模式。")
-        _log(model.id, "请执行：pip install modelscope")
-        target = _download_mock
-    elif mode == "mock":
-        target = _download_mock
-    else:
-        target = _download_real
-
+    """异步启动模型下载线程（仅真实下载；SDK 未装时直接标记失败）"""
+    if not HAS_MODELSCOPE:
+        _log(model.id, "[错误] 未安装 modelscope SDK，无法下载。请执行：pip install modelscope")
+        _set_status(model.id, "failed", description="未安装 modelscope SDK")
+        return
     t = threading.Thread(
-        target=target,
+        target=_download_real,
         args=(model.id, model.model_id),
         daemon=True,
     )

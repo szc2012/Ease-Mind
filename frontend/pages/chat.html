@@ -51,6 +51,16 @@
       background: var(--danger-light);
       color: var(--danger);
     }
+    .loading-spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      display: inline-block;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
@@ -84,7 +94,7 @@
                   <textarea class="chat-input" id="chat-input" placeholder="输入消息，按 Enter 发送，Shift+Enter 换行" rows="1"></textarea>
                   <button class="btn btn-primary" id="send-btn">发送</button>
                 </div>
-                <div class="text-xs text-muted text-center mt-1">由 EaseMind 平台提供 · 模拟对话模式</div>
+                <div class="text-xs text-muted text-center mt-1">由 EaseMind 平台提供 · 本地模型真实推理</div>
               </div>
             </div>
           </div>
@@ -126,7 +136,7 @@
     }
 
     async function deleteSession(id, title) {
-      if (!confirm(`确定删除对话「${title}」吗？`)) return;
+      if (!(await App.confirmDialog(`确定删除对话「${title}」吗？`, { title: "删除对话" }))) return;
       try {
         await App.api.delete(`/api/chat/sessions/${id}`);
         App.toast("对话已删除", "success");
@@ -247,8 +257,12 @@
       try {
         await App.streamSSEPost("/api/chat/send", { session_id: currentSessionId, content }, (msg) => {
           if (msg.type === "hint") {
-            // 加载提示，不加入回复 buffer
-            if (buffer === "") bubbleContent.innerHTML = `<span class="text-muted">${App.escapeHtml(msg.content)}</span>`;
+            // 加载提示，不加入回复 buffer（带旋转动画，明确告知首次加载较慢）
+            if (buffer === "") bubbleContent.innerHTML = `
+              <span class="text-muted" style="display:inline-flex;align-items:center;gap:8px">
+                <span class="loading-spinner"></span>
+                <span>正在加载模型，首次约需 5~15 秒，请稍候…</span>
+              </span>`;
           } else if (msg.type === "token") {
             if (buffer === "") bubbleContent.innerHTML = "";
             buffer += msg.content;

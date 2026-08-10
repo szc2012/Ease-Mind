@@ -69,6 +69,10 @@ class TrainingTask(Base):
     error_message = Column(Text, nullable=True)
     # 自动评估结果：[{prompt, base_reply, finetuned_reply, error}]
     evaluation = Column(JSON, nullable=True)
+    # 预设对话评测：[{question, answer(参考答案), model_reply, score(1/-1/0未评)}]
+    eval_dialogs = Column(JSON, nullable=True)
+    # 对话评测总得分（正确+1，错误-1）
+    eval_score = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
     started_at = Column(DateTime, nullable=True)
     finished_at = Column(DateTime, nullable=True)

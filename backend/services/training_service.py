@@ -1,27 +1,19 @@
-"""训练服务
-
-支持两种模式：
-- "real": 使用 transformers + peft 进行真实 LoRA 微调
-- "mock": 模拟训练流程（无 GPU 也能演示完整体验）
-
-通过 settings.TRAINING_MODE 控制。
-"""
+"""训练服务：使用 transformers + peft 进行真实 LoRA 微调。"""
 import os
 import sys
 import time
 import json
-import random
 import threading
 import traceback
 from datetime import datetime
 from pathlib import Path
 
-from config import settings, LOG_DIR, MODEL_DIR
+from config import LOG_DIR, MODEL_DIR
 from database import SessionLocal
 from models import TrainingTask, AIModel, Dataset
 from services.dataset_service import get_dataset_text
 from services.loss_service import record_loss
-from services.evaluation_service import evaluate_finetuned_model
+from services.evaluation_service import evaluate_finetuned_model, run_dialog_evaluation
 
 
 # 专业模式参数定义
@@ -154,12 +146,16 @@ def _run_real_training(task_id: str) -> None:
         db.commit()
 
         write_log(task_id, "  加载基础模型...")
-        model = AutoModelForCausalLM.from_pretrained(
-            model_path,
-            torch_dtype=dtype,
-            trust_remote_code=True,
-            low_cpu_mem_usage=True,
-        )
+        # 统一多模态模型（gemma4_unified 等）用多模态类加载以兼容纯文本训练
+        from services.chat_service import _is_multimodal_unified
+        if _is_multimodal_unified(model_path):
+            from transformers import AutoModelForMultimodalLM
+            write_log(task_id, "  检测到统一多模态模型，以文本模式加载")
+            model = AutoModelForMultimodalLM.from_pretrained(
+                model_path, torch_dtype=dtype, trust_remote_code=True, low_cpu_mem_usage=True)
+        else:
+            model = AutoModelForCausalLM.from_pretrained(
+                model_path, torch_dtype=dtype, trust_remote_code=True, low_cpu_mem_usage=True)
         task.progress = 12.0
         db.commit()
         write_log(task_id, f"  模型参数量：{sum(p.numel() for p in model.parameters()) / 1e6:.1f}M")
@@ -167,13 +163,20 @@ def _run_real_training(task_id: str) -> None:
         # ---- 配置 LoRA ----
         write_log(task_id, "")
         write_log(task_id, "▶ 阶段 2/4：配置 LoRA")
+        # 依据模型实际包含的注意力投影层自动选择 target_modules（兼容多模态统一模型）
+        present = {n.split(".")[-1] for n, _ in model.named_modules()}
+        preferred = ["q_proj", "k_proj", "v_proj", "o_proj"]
+        targets = [m for m in preferred if m in present] or (["query", "value"] if "query" in present else None)
+        if not targets:
+            targets = "all-linear"  # 兜底：对所有线性层加 LoRA
+        write_log(task_id, f"  LoRA target_modules: {targets}")
         lora_config = LoraConfig(
             task_type=TaskType.CAUSAL_LM,
             r=lora_r,
             lora_alpha=lora_alpha,
             lora_dropout=lora_dropout,
             bias="none",
-            target_modules=["q_proj", "k_proj", "v_proj", "o_proj"] if hasattr(model, "model") else ["query"],
+            target_modules=targets,
         )
         model = get_peft_model(model, lora_config)
         trainable = sum(p.numel() for p in model.parameters() if p.requires_grad) / 1e6
@@ -370,6 +373,28 @@ def _run_real_training(task_id: str) -> None:
         write_log(task_id, f"本地路径：{save_path}")
         write_log(task_id, "=" * 60)
 
+        # ---- 释放训练模型内存，避免后续评测推理时显存/资源冲突导致空回复 ----
+        try:
+            import gc
+            del model
+            if "merged" in dir():
+                try:
+                    del merged
+                except Exception:
+                    pass
+            gc.collect()
+            try:
+                import torch as _torch
+                if _torch.backends.mps.is_available():
+                    _torch.mps.empty_cache()
+                if _torch.cuda.is_available():
+                    _torch.cuda.empty_cache()
+            except Exception:
+                pass
+            write_log(task_id, "  已释放训练模型内存，准备评估推理")
+        except Exception:
+            pass
+
         # ---- 自动评估：对比基础模型与微调模型在同一组 prompt 上的回复 ----
         try:
             write_log(task_id, "")
@@ -388,6 +413,12 @@ def _run_real_training(task_id: str) -> None:
                 write_log(task_id, f"  [警告] 自动评估失败：{eval_err}")
             except Exception:
                 pass
+
+        # 对话评测不在训练线程内执行（避免与训练模型资源冲突导致空回复）。
+        # 改为前端点击「开始评测」时通过 /eval/run 接口在独立线程中运行。
+        if task.eval_dialogs:
+            write_log(task_id, "")
+            write_log(task_id, "提示：检测到预设对话，请在前端点击「开始评测」生成模型回答并打分。")
     except Exception as e:
         try:
             db.rollback()
@@ -409,112 +440,189 @@ def _run_real_training(task_id: str) -> None:
         db.close()
 
 
-# ============== 模拟训练（保留作为 fallback） ==============
+# ============== 对话评测（独立线程，前端触发） ==============
 
-def _run_mock_training(task_id: str) -> None:
+def _run_dialog_eval(task_id: str) -> None:
+    """在独立线程中用结果模型逐条回答预设问题，写回 eval_dialogs 供人工打分"""
     db = SessionLocal()
     try:
         task = db.query(TrainingTask).filter(TrainingTask.id == task_id).first()
-        if not task:
+        if not task or not task.eval_dialogs:
             return
-        task.log_file = str(get_log_path(task_id))
-        task.status = "running"
-        task.started_at = datetime.utcnow()
-        db.commit()
-
-        write_log(task_id, "=" * 60)
-        write_log(task_id, f"训练任务（模拟模式）：{task.name}")
-        write_log(task_id, "=" * 60)
-
-        base_model = db.query(AIModel).filter(AIModel.id == task.model_id).first()
-        ds_ids = [s.strip() for s in (task.dataset_id or "").split(",") if s.strip()]
-        datasets = [db.query(Dataset).filter(Dataset.id == did).first() for did in ds_ids]
-        datasets = [d for d in datasets if d]
-        if not base_model or not datasets:
-            task.status = "failed"
-            db.commit()
+        # 取结果模型路径
+        model_path = None
+        if task.result_model_id:
+            m = db.query(AIModel).filter(AIModel.id == task.result_model_id).first()
+            if m:
+                model_path = m.local_path
+        if not model_path:
+            base = db.query(AIModel).filter(AIModel.id == task.model_id).first()
+            model_path = base.local_path if base else None
+        if not model_path:
             return
-
-        total_samples = sum(d.sample_count for d in datasets)
-        ds_names = "、".join(d.name for d in datasets)
-        write_log(task_id, f"基础模型：{base_model.name}")
-        write_log(task_id, f"数据集（{len(datasets)} 个）：{ds_names}（共 {total_samples} 样本）")
-        write_log(task_id, f"参数：{json.dumps(task.params, ensure_ascii=False)}")
-
-        stages = [
-            (5, 20, "▶ 阶段 1/4：加载基础模型", [
-                "初始化训练环境...", "加载基础模型...", "加载分词器...", "模型加载完成"]),
-            (20, 44, "▶ 阶段 2/4：数据预处理", [
-                f"读取 {len(datasets)} 个数据集，共 {total_samples} 样本", "文本清洗与归一化...", "分词处理...", "数据预处理完成"]),
-            (44, 90, "▶ 阶段 3/4：模型训练", []),
-            (90, 100, "▶ 阶段 4/4：保存模型", ["合并 LoRA 权重...", "保存模型...", "完成"]),
-        ]
-        for start, end, title, steps in stages:
-            write_log(task_id, "")
-            write_log(task_id, title)
-            for i, s in enumerate(steps):
-                time.sleep(0.4)
-                write_log(task_id, f"  {s}")
-                task.progress = round(start + (end - start) * (i + 1) / max(1, len(steps)), 1)
-                db.commit()
-            if title.endswith("模型训练"):
-                epochs = int(task.params.get("epochs", 2))
-                global_step = 0
-                for ep in range(1, epochs + 1):
-                    write_log(task_id, f"  ---- Epoch {ep}/{epochs} ----")
-                    for s in range(1, 6):
-                        global_step += 1
-                        loss = round(2.8 * (0.5 ** (s / 6)) + random.uniform(-0.05, 0.05), 4)
-                        write_log(task_id, f"  step {s}/5 | loss={loss}")
-                        # 记录 loss 数据点供曲线图使用
-                        record_loss(task_id, global_step, loss, epoch=ep,
-                                    lr=float(task.params.get("learning_rate", 0.0002)),
-                                    task_type="training")
-                        task.progress = round(44 + (ep - 1) / epochs * 46 + s / 5 * 46 / epochs, 1)
-                        db.commit()
-                        time.sleep(0.4)
-
-        result_dir = MODEL_DIR / f"finetuned_{task_id[:8]}"
-        result_dir.mkdir(parents=True, exist_ok=True)
-        (result_dir / "config.json").write_text('{"finetuned": true}', encoding="utf-8")
-        result_model = AIModel(
-            name=f"{base_model.name}-微调版",
-            source="finetune",
-            model_id=base_model.model_id,
-            local_path=str(result_dir),
-            status="ready",
-            description=f"（模拟）基于 {base_model.name} 在数据集「{ds_names}」上微调",
-            base_model_id=base_model.id,
-        )
-        db.add(result_model)
-        db.flush()
-        task.result_model_id = result_model.id
-        task.progress = 100.0
-        task.status = "completed"
-        task.finished_at = datetime.utcnow()
-        db.commit()
         write_log(task_id, "")
-        write_log(task_id, "=" * 60)
-        write_log(task_id, "训练完成！")
-        write_log(task_id, "=" * 60)
+        write_log(task_id, "▶ 对话评测（独立线程）：用预设问题测试结果模型")
+        dialogs = run_dialog_evaluation(model_path, task.eval_dialogs)
+        # 空回复重试一次
+        from services.evaluation_service import _safe_generate
+        for d in dialogs:
+            if not (d.get("model_reply") or "").strip():
+                d["model_reply"] = _safe_generate(d["question"], model_path)
+        task.eval_dialogs = dialogs
+        db.commit()
+        write_log(task_id, f"  对话评测完成：共 {len(dialogs)} 条，请打分")
     except Exception as e:
         try:
-            db.rollback()
-            write_log(task_id, "[错误] " + str(e))
-            task = db.query(TrainingTask).filter(TrainingTask.id == task_id).first()
-            if task:
-                task.status = "failed"
-                task.error_message = str(e)
-                task.finished_at = datetime.utcnow()
-                db.commit()
+            write_log(task_id, f"  [警告] 对话评测失败：{e}")
         except Exception:
             pass
     finally:
         db.close()
 
 
+def start_dialog_eval(task_id: str) -> None:
+    t = threading.Thread(target=_run_dialog_eval, args=(task_id,), daemon=True)
+    t.start()
+
+
+# ============== 评分驱动的追加训练（RLHF 式纠偏） ==============
+
+def _run_reinforce_training(task_id: str) -> None:
+    """基于用户打分结果对结果模型做追加训练：
+    - 用户标记「错误(-1)」的对话：用问题+参考答案作为纠偏样本，权重更高
+    - 用户标记「正确(+1)」的对话：作为优质样本巩固
+    在结果模型基础上继续 LoRA SFT，产出新的纠偏模型。
+    """
+    db = SessionLocal()
+    try:
+        task = db.query(TrainingTask).filter(TrainingTask.id == task_id).first()
+        if not task or not task.result_model_id:
+            return
+        result_model = db.query(AIModel).filter(AIModel.id == task.result_model_id).first()
+        if not result_model or not result_model.local_path:
+            return
+
+        scored = [d for d in (task.eval_dialogs or []) if d.get("score") in (1, -1) and d.get("answer")]
+        if not scored:
+            write_log(task_id, "[错误] 没有已打分的对话样本，无法追加训练")
+            return
+
+        log_path = LOG_DIR / f"reinforce_{task_id}.log"
+        def rlog(msg):
+            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(f"[{ts}] {msg}\n")
+
+        rlog("=" * 60)
+        rlog(f"评分驱动追加训练：{task.name}")
+        rlog(f"基于模型：{result_model.name}")
+        rlog(f"纠偏样本（错误）：{sum(1 for d in scored if d['score'] == -1)} 条")
+        rlog(f"优质样本（正确）：{sum(1 for d in scored if d['score'] == 1)} 条")
+        rlog("=" * 60)
+
+        import torch
+        from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, Trainer, default_data_collator
+        from peft import LoraConfig, get_peft_model, TaskType
+
+        device = "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu")
+        dtype = torch.float16 if device != "cpu" else torch.float32
+        rlog(f"设备：{device}")
+
+        tokenizer = AutoTokenizer.from_pretrained(result_model.local_path, trust_remote_code=True)
+        if tokenizer.pad_token_id is None:
+            tokenizer.pad_token = tokenizer.eos_token
+        model = AutoModelForCausalLM.from_pretrained(
+            result_model.local_path, torch_dtype=dtype, trust_remote_code=True, low_cpu_mem_usage=True)
+
+        lora_config = LoraConfig(
+            task_type=TaskType.CAUSAL_LM, r=8, lora_alpha=16, lora_dropout=0.05,
+            bias="none",
+            target_modules=["q_proj", "k_proj", "v_proj", "o_proj"] if hasattr(model, "model") else ["query"],
+        )
+        model = get_peft_model(model, lora_config)
+        rlog("LoRA 配置完成（追加训练）")
+
+        # 构造纠偏样本：错误样本重复3次（权重更高），正确样本1次
+        texts = []
+        for d in scored:
+            qa = f"问题：{d['question']}\n回答：{d['answer']}"
+            repeat = 3 if d["score"] == -1 else 1
+            texts.extend([qa] * repeat)
+        rlog(f"追加训练样本数：{len(texts)} 条（错误样本已加权）")
+
+        token_samples = []
+        for t in texts:
+            ids = tokenizer.encode(t, add_special_tokens=False)[:256]
+            if len(ids) >= 8:
+                token_samples.append(ids)
+
+        class RDataset(torch.utils.data.Dataset):
+            def __init__(self, samples, pad_id):
+                self.samples = samples; self.pad_id = pad_id
+            def __len__(self): return len(self.samples)
+            def __getitem__(self, i):
+                ids = self.samples[i][:]; labels = ids.copy()
+                attn = [1] * len(ids)
+                while len(ids) < 256:
+                    ids.append(self.pad_id); labels.append(-100); attn.append(0)
+                return {"input_ids": torch.tensor(ids), "labels": torch.tensor(labels),
+                        "attention_mask": torch.tensor(attn)}
+
+        rds = RDataset(token_samples, tokenizer.pad_token_id)
+        out_dir = MODEL_DIR / f"reinforced_{task_id[:8]}"
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        args = TrainingArguments(
+            output_dir=str(out_dir), num_train_epochs=2, per_device_train_batch_size=2,
+            learning_rate=1e-4, logging_steps=1, save_strategy="no", report_to=[],
+            fp16=False, use_cpu=(device == "cpu"), disable_tqdm=True,
+        )
+        trainer = Trainer(model=model, args=args, train_dataset=rds, data_collator=default_data_collator)
+        rlog("开始追加训练...")
+        trainer.train()
+        rlog("追加训练完成，保存模型...")
+
+        merged_dir = out_dir / "merged"
+        merged_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            merged = model.merge_and_unload()
+            merged.save_pretrained(str(merged_dir), safe_serialization=True, max_shard_size="2GB")
+            tokenizer.save_pretrained(str(merged_dir))
+            save_path = str(merged_dir)
+        except Exception:
+            import shutil
+            shutil.copytree(result_model.local_path, merged_dir, dirs_exist_ok=True)
+            save_path = str(merged_dir)
+
+        new_model = AIModel(
+            name=f"{result_model.name}-纠偏版",
+            source="finetune", model_id=result_model.model_id,
+            local_path=save_path, status="ready",
+            description=f"基于 {result_model.name} 的评分驱动纠偏模型（得分 {task.eval_score}，错误样本加权训练）",
+            base_model_id=result_model.id,
+        )
+        db.add(new_model)
+        db.flush()
+        task.result_model_id = new_model.id
+        db.commit()
+        rlog(f"纠偏模型已保存：{save_path}")
+        rlog("=" * 60)
+    except Exception as e:
+        try:
+            db.rollback()
+            tb = traceback.format_exc()
+            write_log(task_id, f"[错误] 追加训练失败：{e}\n{tb}")
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
+def start_reinforce_training(task_id: str) -> None:
+    t = threading.Thread(target=_run_reinforce_training, args=(task_id,), daemon=True)
+    t.start()
+
+
 def start_training(task_id: str) -> None:
-    mode = settings.TRAINING_MODE.lower()
-    target = _run_real_training if mode != "mock" else _run_mock_training
-    t = threading.Thread(target=target, args=(task_id,), daemon=True)
+    t = threading.Thread(target=_run_real_training, args=(task_id,), daemon=True)
     t.start()

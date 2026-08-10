@@ -10,12 +10,13 @@
 - 模型懒加载 + 全局缓存
 """
 import re
+import json
 import threading
 import torch
 from pathlib import Path
 from typing import Optional
 
-from config import settings
+
 
 
 # 模型缓存：key=model_path，value=dict(model, tokenizer, device)
@@ -40,8 +41,26 @@ def _strip_think(text: str) -> str:
     return text.strip()
 
 
+def _is_multimodal_unified(model_path: str) -> bool:
+    """判断是否为统一多模态模型（如 gemma4_unified），需用多模态类加载以兼容纯文本"""
+    try:
+        cfg_file = Path(model_path) / "config.json"
+        if cfg_file.exists():
+            cfg = json.loads(cfg_file.read_text(encoding="utf-8"))
+            mtype = (cfg.get("model_type") or "").lower()
+            arch = ((cfg.get("architectures") or [""])[0]).lower()
+            return "unified" in mtype or "unified" in arch
+    except Exception:
+        pass
+    return False
+
+
 def _load_model(model_path: str):
-    """加载模型与分词器（带缓存，双重检查锁定避免持锁加载）"""
+    """加载模型与分词器（带缓存，双重检查锁定避免持锁加载）
+
+    文本模式适配：统一多模态模型（gemma4_unified 等）用 AutoModelForMultimodalLM
+    加载以兼容纯文本推理；普通文本模型用 AutoModelForCausalLM。
+    """
     # 第一次检查（锁外，快速路径）
     if model_path in _MODEL_CACHE:
         return _MODEL_CACHE[model_path]
@@ -61,12 +80,22 @@ def _load_model(model_path: str):
         if tok.pad_token_id is None:
             tok.pad_token_id = tok.eos_token_id
 
-        model = AutoModelForCausalLM.from_pretrained(
-            model_path,
-            torch_dtype=dtype,
-            trust_remote_code=True,
-            low_cpu_mem_usage=True,
-        )
+        if _is_multimodal_unified(model_path):
+            # 统一多模态模型：仅用其文本生成能力
+            from transformers import AutoModelForMultimodalLM
+            model = AutoModelForMultimodalLM.from_pretrained(
+                model_path,
+                torch_dtype=dtype,
+                trust_remote_code=True,
+                low_cpu_mem_usage=True,
+            )
+        else:
+            model = AutoModelForCausalLM.from_pretrained(
+                model_path,
+                torch_dtype=dtype,
+                trust_remote_code=True,
+                low_cpu_mem_usage=True,
+            )
         model = model.to(device)
         model.eval()
 
@@ -165,49 +194,8 @@ def generate_reply(user_message: str, history: list, model_path: str) -> str:
     return "".join(chunks).strip()
 
 
-# ============== 兼容旧接口（mock 回退） ==============
-_RESPONSE_TEMPLATES = [
-    "您好！我是由 EaseMind 平台训练的 AI 助手。关于您提到的「{topic}」，我可以从以下几个方面来为您解答：\n\n1. **基本概念**：这是该主题的核心要点。\n2. **应用场景**：它在实际中有很多用途。\n3. **注意事项**：使用时需要关注一些细节。\n\n请问您想深入了解哪一部分？",
-    "这是一个很有意思的问题。针对「{topic}」，我的理解如下：\n\n简单来说，它涉及到多个方面的知识。根据相关资料和常见实践，我们可以这样理解其工作原理与价值。\n\n如果您有更具体的问题，欢迎继续提问。",
-    "关于「{topic}」，我整理了一些信息供您参考：\n\n- 它是一个重要的概念\n- 在实际应用中需要结合具体场景\n- 建议从基础开始逐步深入\n\n希望这些信息对您有帮助，还有什么我可以为您解答的吗？",
-]
-
-
-def _extract_topic(text: str) -> str:
-    text = text.strip()
-    text = re.sub(r"^(请问|帮我|我想了解|你能告诉我|什么是|怎么样|如何|为什么|请介绍一下)[：:，,]?\s*", "", text)
-    text = re.sub(r"[？?。.!！]$", "", text)
-    return text[:30] if text else "这个问题"
-
-
-def _mock_reply(user_message: str, history: list) -> str:
-    topic = _extract_topic(user_message)
-    idx = len(history) % len(_RESPONSE_TEMPLATES)
-    return _RESPONSE_TEMPLATES[idx].format(topic=topic)
-
-
-def _mock_stream(user_message: str, history: list):
-    reply = _mock_reply(user_message, history)
-    chunks = re.split(r"(\n|。|！|？|，|；|：)", reply)
-    buffer = ""
-    import time
-    for chunk in chunks:
-        buffer += chunk
-        if chunk in ("\n", "。", "！", "？", "，", "；", "：") or len(buffer) >= 12:
-            yield buffer
-            buffer = ""
-            time.sleep(0.05)
-    if buffer:
-        yield buffer
-
-
 def stream_reply(user_message: str, history: list, model_path: Optional[str] = None):
-    """统一入口：优先真实推理，model_path 为空或失败时回退 mock"""
-    # 配置为 mock 模式
-    if settings.TRAINING_MODE.lower() == "mock" and not model_path:
-        yield from _mock_stream(user_message, history)
-        return
-
+    """统一入口：仅真实推理，失败时返回错误提示"""
     # 没提供模型路径
     if not model_path:
         yield "（未指定可用模型，无法进行真实推理）"
@@ -221,6 +209,4 @@ def stream_reply(user_message: str, history: list, model_path: Optional[str] = N
     try:
         yield from generate_reply_stream(user_message, history, model_path)
     except Exception as e:
-        # 真实推理失败，回退到 mock
-        yield f"\n\n[推理错误，已回退到模拟回复：{type(e).__name__}: {e}]\n\n"
-        yield from _mock_stream(user_message, history)
+        yield f"\n\n[推理错误：{type(e).__name__}: {e}]\n\n"

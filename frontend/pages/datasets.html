@@ -133,7 +133,7 @@
     }
 
     async function delDs(id, name) {
-      if (!confirm(`确定删除数据集「${name}」吗？`)) return;
+      if (!(await App.confirmDialog(`确定删除数据集「${name}」吗？`, { title: "删除数据集" }))) return;
       try {
         await App.api.delete(`/api/datasets/${id}`);
         App.toast("数据集已删除", "success");

@@ -6,8 +6,38 @@
   <title>登录 - EaseMind</title>
   <link rel="stylesheet" href="/assets/css/polish.css">
   <link rel="icon" type="image/svg+xml" href="/assets/ease-mind-logo.svg">
+  <style>
+    /* 登录页全屏视频背景 */
+    .auth-video-bg {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+    }
+    .auth-video-bg video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    /* 轻遮罩，保证登录卡片可读 */
+    .auth-video-bg::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: rgba(250, 249, 245, 0.55);
+      backdrop-filter: blur(2px);
+    }
+    .auth-wrap {
+      position: relative;
+      z-index: 1;
+      background: transparent;
+    }
+  </style>
 </head>
 <body>
+  <div class="auth-video-bg">
+    <video src="/assets/vidoe.mp4" autoplay muted loop playsinline></video>
+  </div>
   <div class="auth-wrap">
     <div class="auth-card">
       <div class="auth-brand">

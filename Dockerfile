@@ -28,17 +28,15 @@ RUN mkdir -p /app/data/models /app/data/datasets /app/data/logs
 ENV TZ=Asia/Shanghai
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-EXPOSE 8080
+EXPOSE 8800
 
 # 环境变量默认值（可通过 docker run -e 或 compose 覆盖）
 ENV HOST=0.0.0.0 \
-    PORT=8080 \
+    PORT=8800 \
     ADMIN_USERNAME=admin \
-    ADMIN_PASSWORD=admin123 \
-    TRAINING_MODE=real \
-    MODEL_DOWNLOAD_MODE=real
+    ADMIN_PASSWORD=admin123
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-    CMD curl -f http://localhost:8080/api/health || exit 1
+    CMD curl -f http://localhost:8800/api/health || exit 1
 
 CMD ["python", "backend/main.py"]

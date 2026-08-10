@@ -5,17 +5,15 @@ services:
     build: .
     container_name: easemind
     ports:
-      - "8080:8080"
+      - "8800:8800"
     volumes:
       # 持久化数据（模型、数据集、日志、数据库）
       - easemind-data:/app/data
     environment:
       - HOST=0.0.0.0
-      - PORT=8080
+      - PORT=8800
       - ADMIN_USERNAME=admin
       - ADMIN_PASSWORD=admin123
-      - TRAINING_MODE=real
-      - MODEL_DOWNLOAD_MODE=real
       # 如需自定义 JWT 密钥，取消下行注释并修改
       # - SECRET_KEY=your-secret-key-here
     restart: unless-stopped

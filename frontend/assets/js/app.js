@@ -136,6 +136,62 @@ const App = (() => {
     return { overlay, close: () => overlay.remove() };
   }
 
+  // ---- 自定义确认框（替代浏览器 confirm，返回 Promise<boolean>） ----
+  function confirmDialog(message, { title = "确认操作", okText = "确定", cancelText = "取消", danger = true } = {}) {
+    return new Promise((resolve) => {
+      const body = document.createElement("div");
+      body.style.cssText = "font-size:14px;line-height:1.6;color:var(--text)";
+      body.textContent = message;
+      const footer = document.createElement("div");
+      footer.style.cssText = "display:flex;justify-content:flex-end;gap:8px";
+      const cancelBtn = document.createElement("button");
+      cancelBtn.className = "btn btn-secondary";
+      cancelBtn.textContent = cancelText;
+      const okBtn = document.createElement("button");
+      okBtn.className = danger ? "btn btn-danger" : "btn btn-primary";
+      okBtn.textContent = okText;
+      footer.appendChild(cancelBtn);
+      footer.appendChild(okBtn);
+      const { close } = modal({ title, body, footer });
+      const done = (val) => { close(); resolve(val); };
+      cancelBtn.onclick = () => done(false);
+      okBtn.onclick = () => done(true);
+      okBtn.focus();
+    });
+  }
+
+  // ---- 自定义输入框（替代浏览器 prompt，返回 Promise<string|null>） ----
+  function promptDialog(message, { title = "请输入", placeholder = "", defaultValue = "", okText = "确定", cancelText = "取消" } = {}) {
+    return new Promise((resolve) => {
+      const body = document.createElement("div");
+      const label = document.createElement("div");
+      label.style.cssText = "font-size:14px;margin-bottom:8px;color:var(--text)";
+      label.textContent = message;
+      const input = document.createElement("input");
+      input.className = "form-input";
+      input.placeholder = placeholder;
+      input.value = defaultValue;
+      body.appendChild(label);
+      body.appendChild(input);
+      const footer = document.createElement("div");
+      footer.style.cssText = "display:flex;justify-content:flex-end;gap:8px";
+      const cancelBtn = document.createElement("button");
+      cancelBtn.className = "btn btn-secondary";
+      cancelBtn.textContent = cancelText;
+      const okBtn = document.createElement("button");
+      okBtn.className = "btn btn-primary";
+      okBtn.textContent = okText;
+      footer.appendChild(cancelBtn);
+      footer.appendChild(okBtn);
+      const { close } = modal({ title, body, footer });
+      const done = (val) => { close(); resolve(val); };
+      cancelBtn.onclick = () => done(null);
+      okBtn.onclick = () => done(input.value);
+      input.onkeydown = (e) => { if (e.key === "Enter") done(input.value); };
+      setTimeout(() => input.focus(), 50);
+    });
+  }
+
   // ---- 侧边栏 ----
   function buildSidebar(activeKey) {
     function getNavIcon(key) {
@@ -436,7 +492,7 @@ const App = (() => {
   return {
     getToken, getUser, setToken, setUser, clearAuth,
     api, requireAuth, requireAdmin, redirectLogin, redirectHome,
-    toast, modal, renderShell, buildSidebar, buildTopbar,
+    toast, modal, confirmDialog, promptDialog, renderShell, buildSidebar, buildTopbar,
     escapeHtml, escapeJsAttr, formatTime, statusBadge, logout,
     streamSSE, streamSSEPost, drawLossChart,
   };

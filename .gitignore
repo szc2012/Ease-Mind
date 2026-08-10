@@ -58,3 +58,8 @@ test_debug.py
 !img/*.jpeg
 !img/*.jpg
 !docs/images/*.png
+
+# 个人测试数据与文档（勿上传）
+1.txt
+ease-mind.docx
+*.docx

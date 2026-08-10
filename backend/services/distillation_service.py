@@ -5,19 +5,15 @@
 - 学生模型（小模型）同时学习软标签和真实标签
 - 损失 = alpha * KL(teacher_soft, student_soft) + (1-alpha) * CE(student, hard_labels)
 
-通过 settings.TRAINING_MODE 控制：
-- "real": 真实蒸馏
-- "mock": 模拟流程
 """
 import time
 import json
-import random
 import threading
 import traceback
 from datetime import datetime
 from pathlib import Path
 
-from config import settings, LOG_DIR, MODEL_DIR
+from config import LOG_DIR, MODEL_DIR
 from database import SessionLocal
 from models import DistillationTask, AIModel, Dataset
 from services.dataset_service import get_dataset_text
@@ -415,114 +411,6 @@ def _run_real_distillation(task_id: str) -> None:
         db.close()
 
 
-def _run_mock_distillation(task_id: str) -> None:
-    """模拟蒸馏流程"""
-    db = SessionLocal()
-    try:
-        task = db.query(DistillationTask).filter(DistillationTask.id == task_id).first()
-        if not task:
-            return
-        task.log_file = str(get_log_path(task_id))
-        task.status = "running"
-        task.started_at = datetime.utcnow()
-        db.commit()
-
-        write_log(task_id, "=" * 60)
-        write_log(task_id, f"模型蒸馏任务（模拟模式）：{task.name}")
-        write_log(task_id, "=" * 60)
-
-        teacher = db.query(AIModel).filter(AIModel.id == task.teacher_model_id).first()
-        student = db.query(AIModel).filter(AIModel.id == task.student_model_id).first()
-        ds_ids = [s.strip() for s in (task.dataset_id or "").split(",") if s.strip()]
-        datasets = [db.query(Dataset).filter(Dataset.id == did).first() for did in ds_ids]
-        datasets = [d for d in datasets if d]
-        if not teacher or not student or not datasets:
-            task.status = "failed"
-            db.commit()
-            return
-
-        total_samples = sum(d.sample_count for d in datasets)
-        ds_names = "、".join(d.name for d in datasets)
-        write_log(task_id, f"教师模型：{teacher.name}")
-        write_log(task_id, f"学生模型：{student.name}")
-        write_log(task_id, f"数据集（{len(datasets)} 个）：{ds_names}（共 {total_samples} 样本）")
-        write_log(task_id, f"参数：{json.dumps(task.params, ensure_ascii=False)}")
-
-        stages = [
-            (5, 20, "▶ 阶段 1/4：加载教师模型", ["初始化...", "加载教师模型...", "教师模型就绪"]),
-            (20, 35, "▶ 阶段 2/4：加载学生模型", ["加载学生模型...", "学生模型就绪"]),
-            (35, 50, "▶ 阶段 3/4：生成教师软标签", [f"教师模型对 {total_samples} 样本生成 logits...", "软标签生成完成"]),
-            (50, 90, "▶ 阶段 4/4：蒸馏训练学生模型", []),
-            (90, 100, "保存蒸馏模型", ["保存模型...", "完成"]),
-        ]
-        for start, end, title, steps in stages:
-            write_log(task_id, "")
-            write_log(task_id, title)
-            for i, s in enumerate(steps):
-                time.sleep(0.4)
-                write_log(task_id, f"  {s}")
-                task.progress = round(start + (end - start) * (i + 1) / max(1, len(steps)), 1)
-                db.commit()
-            if "蒸馏训练" in title:
-                epochs = int(task.params.get("epochs", 2))
-                global_step = 0
-                for ep in range(1, epochs + 1):
-                    write_log(task_id, f"  ---- Epoch {ep}/{epochs} ----")
-                    for s in range(1, 6):
-                        global_step += 1
-                        distill_loss = round(2.0 * (0.6 ** (s / 6)) + random.uniform(-0.05, 0.05), 4)
-                        ce_loss = round(2.5 * (0.5 ** (s / 6)) + random.uniform(-0.05, 0.05), 4)
-                        total_loss = round(0.5 * distill_loss + 0.5 * ce_loss, 4)
-                        write_log(task_id, f"  step {s}/5 | distill={distill_loss} | ce={ce_loss}")
-                        record_loss(task_id, global_step, total_loss, epoch=ep,
-                                    lr=float(task.params.get("learning_rate", 0.0002)),
-                                    extra={"distill_loss": distill_loss, "ce_loss": ce_loss},
-                                    task_type="distillation")
-                        task.progress = round(50 + (ep - 1) / epochs * 40 + s / 5 * 40 / epochs, 1)
-                        db.commit()
-                        time.sleep(0.4)
-
-        result_dir = MODEL_DIR / f"distilled_{task_id[:8]}"
-        result_dir.mkdir(parents=True, exist_ok=True)
-        (result_dir / "config.json").write_text('{"distilled": true}', encoding="utf-8")
-        result_model = AIModel(
-            name=f"{student.name}-蒸馏版",
-            source="distill",
-            model_id=student.model_id,
-            local_path=str(result_dir),
-            status="ready",
-            description=f"（模拟）由 {teacher.name} 蒸馏 {student.name}",
-            base_model_id=student.id,
-        )
-        db.add(result_model)
-        db.flush()
-        task.result_model_id = result_model.id
-        task.progress = 100.0
-        task.status = "completed"
-        task.finished_at = datetime.utcnow()
-        db.commit()
-        write_log(task_id, "")
-        write_log(task_id, "=" * 60)
-        write_log(task_id, "蒸馏完成！")
-        write_log(task_id, "=" * 60)
-    except Exception as e:
-        try:
-            db.rollback()
-            write_log(task_id, "[错误] " + str(e))
-            task = db.query(DistillationTask).filter(DistillationTask.id == task_id).first()
-            if task:
-                task.status = "failed"
-                task.error_message = str(e)
-                task.finished_at = datetime.utcnow()
-                db.commit()
-        except Exception:
-            pass
-    finally:
-        db.close()
-
-
 def start_distillation(task_id: str) -> None:
-    mode = settings.TRAINING_MODE.lower()
-    target = _run_real_distillation if mode != "mock" else _run_mock_distillation
-    t = threading.Thread(target=target, args=(task_id,), daemon=True)
+    t = threading.Thread(target=_run_real_distillation, args=(task_id,), daemon=True)
     t.start()

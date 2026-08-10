@@ -3,7 +3,6 @@
 用一组预设测试 prompt 分别调用基础模型与微调模型生成回复，
 对比两者输出，便于直观判断微调效果。
 
-- 仅在 real 训练模式下触发（mock 模式无真实模型可推理）
 - 评估失败不影响训练结果，错误会记录到评估条目的 error 字段
 """
 from pathlib import Path
@@ -29,6 +28,37 @@ def _safe_generate(prompt: str, model_path: Optional[str], history: list = None)
         return generate_reply(prompt, history or [], model_path)
     except Exception as e:
         return f"[推理错误] {type(e).__name__}: {e}"
+
+
+def run_dialog_evaluation(
+    model_path: Optional[str],
+    dialogs: list[dict],
+    max_new_tokens: int = 256,
+) -> list[dict]:
+    """对话评测：用模型逐条回答预设问题，保留参考答案供人工打分
+
+    返回结构（写回 eval_dialogs）：
+        [
+            {
+                "question": "...",
+                "answer": "...",        # 参考答案
+                "model_reply": "...",   # 微调模型回复
+                "score": 0              # 0 未评 / 1 正确 / -1 错误
+            },
+            ...
+        ]
+    """
+    results: list[dict] = []
+    for d in dialogs:
+        q = (d.get("question") or "").strip()
+        ans = (d.get("answer") or "").strip()
+        item = {"question": q, "answer": ans, "model_reply": "", "score": 0}
+        if q:
+            item["model_reply"] = _safe_generate(q, model_path)
+            if len(item["model_reply"]) > max_new_tokens * 4:
+                item["model_reply"] = item["model_reply"][: max_new_tokens * 4] + "..."
+        results.append(item)
+    return results
 
 
 def evaluate_finetuned_model(

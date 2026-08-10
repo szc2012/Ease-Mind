@@ -1,6 +1,6 @@
 """EaseMind AI 训练平台 - 主应用入口
 
-启动后访问 http://localhost:8080
+启动后访问 http://localhost:8800
 默认管理员账户：admin / admin123
 """
 from pathlib import Path
@@ -33,6 +33,9 @@ def init_db():
     Base.metadata.create_all(bind=engine)
     # 轻量迁移：为已存在的 training_tasks 表追加 evaluation 列
     _ensure_column("training_tasks", "evaluation", "JSON")
+    # 对话评测：预设 QA + 人工打分
+    _ensure_column("training_tasks", "eval_dialogs", "JSON")
+    _ensure_column("training_tasks", "eval_score", "INTEGER DEFAULT 0")
     db = SessionLocal()
     try:
         admin = db.query(User).filter(User.username == settings.ADMIN_USERNAME).first()
@@ -80,8 +83,8 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:8080",
-        "http://127.0.0.1:8080",
+        "http://localhost:8800",
+        "http://127.0.0.1:8800",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ],
